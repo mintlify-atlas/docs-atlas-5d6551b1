@@ -1,0 +1,599 @@
+---
+title: 'Production Deployment'
+description: 'Step-by-step guide to deploy Don Palito Jr to production'
+---
+
+This guide walks you through deploying Don Palito Jr to a production environment.
+
+## Prerequisites
+
+<Note>
+Before deploying to production, ensure you have:
+- Node.js 20.0.0 or higher installed
+- MongoDB Atlas account (or another MongoDB hosting service)
+- Clerk account configured
+- Cloudinary account set up
+- Stripe account in live mode
+- Inngest account configured
+- Gmail account with app password for emails
+</Note>
+
+## Build Process
+
+Don Palito Jr uses a monorepo structure with a root-level build script that coordinates building both the backend and admin panel.
+
+### Build Command
+
+From the root directory:
+
+```bash
+npm run build
+```
+
+This command executes the following sequence (defined in root `package.json`):
+
+```json
+{
+  "scripts": {
+    "build": "npm install --prefix backend && npm install --prefix admin && npm run build --prefix admin"
+  }
+}
+```
+
+<Accordion title="Build Process Breakdown">
+1. **Install backend dependencies** - `npm install --prefix backend`
+2. **Install admin dependencies** - `npm install --prefix admin`
+3. **Build admin panel** - `npm run build --prefix admin`
+
+The admin panel is built as a static React application and placed in `admin/dist/`.
+</Accordion>
+
+### Starting the Server
+
+After building, start the production server:
+
+```bash
+npm start
+```
+
+This runs:
+
+```json
+{
+  "scripts": {
+    "start": "npm run start --prefix backend"
+  }
+}
+```
+
+The backend server starts on port 3000 (or the port specified in `PORT` environment variable) and serves the built admin panel as static files.
+
+## Production Environment Setup
+
+### 1. Database Configuration
+
+Set up MongoDB Atlas for production:
+
+<Steps>
+  <Step title="Create MongoDB Atlas Cluster">
+    Go to [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) and create a new cluster.
+  </Step>
+  
+  <Step title="Configure Network Access">
+    Add your production server's IP address to the IP whitelist, or allow access from anywhere (0.0.0.0/0) if using dynamic IPs.
+  </Step>
+  
+  <Step title="Create Database User">
+    Create a database user with read/write permissions.
+  </Step>
+  
+  <Step title="Get Connection String">
+    Copy your connection string and set it as `DB_URL`:
+    
+    ```bash
+    DB_URL=mongodb+srv://username:password@cluster.mongodb.net/donpalitojr?retryWrites=true&w=majority
+    ```
+  </Step>
+</Steps>
+
+The database connection is handled in `backend/src/config/db.js`:
+
+```javascript
+import mongoose from "mongoose";
+import {ENV} from "./env.js";
+
+export const connectDB = async () => {
+    try {
+        const conn = await mongoose.connect(ENV.DB_URL);
+        console.log(`✅ Connected to MongoDB: ${conn.connection.host}`);
+    } catch (error) {
+        console.log("❌ MONGODB connection error");
+        process.exit(1);
+    }
+}
+```
+
+### 2. Clerk Authentication
+
+Configure Clerk for production:
+
+<Steps>
+  <Step title="Switch to Production Instance">
+    In your Clerk dashboard, switch from Development to Production.
+  </Step>
+  
+  <Step title="Update API Keys">
+    Replace test keys with production keys:
+    - `CLERK_PUBLISHABLE_KEY=pk_live_...`
+    - `CLERK_SECRET_KEY=sk_live_...`
+  </Step>
+  
+  <Step title="Configure Webhook">
+    Add webhook endpoint: `https://yourdomain.com/api/webhooks/clerk`
+    
+    Subscribe to events:
+    - `user.created`
+    - `user.deleted`
+    
+    Copy the webhook signing secret to `CLERK_WEBHOOK_SECRET`
+  </Step>
+</Steps>
+
+<Warning>
+The webhook at `/api/webhooks/clerk` triggers Inngest functions to sync users with MongoDB. Ensure both Clerk and Inngest are properly configured.
+</Warning>
+
+### 3. Cloudinary Setup
+
+Configure Cloudinary for production image storage:
+
+```bash
+CLOUDINARY_CLOUD_NAME=your-production-cloud
+CLOUDINARY_API_KEY=123456789012345
+CLOUDINARY_API_SECRET=your-secret-key
+```
+
+<Note>
+Cloudinary is used for product images and can handle high traffic in production. Consider enabling auto-format and auto-quality optimizations.
+</Note>
+
+### 4. Stripe Configuration
+
+<Warning>
+Critical: Switch from test mode to live mode in production!
+</Warning>
+
+<Steps>
+  <Step title="Activate Live Mode">
+    In your Stripe dashboard, switch to Live mode and complete account verification.
+  </Step>
+  
+  <Step title="Update API Keys">
+    Replace test keys with live keys:
+    ```bash
+    STRIPE_SECRET_KEY=sk_live_xxxxxxxxxxxxx
+    STRIPE_PUBLISHABLE_KEY=pk_live_xxxxxxxxxxxxx
+    ```
+  </Step>
+  
+  <Step title="Configure Webhook">
+    Add production webhook endpoint: `https://yourdomain.com/api/payment/webhook`
+    
+    Subscribe to these events:
+    - `checkout.session.completed`
+    - `payment_intent.succeeded`
+    - `payment_intent.payment_failed`
+    
+    Copy the webhook signing secret:
+    ```bash
+    STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxx
+    ```
+  </Step>
+</Steps>
+
+The payment webhook uses raw body parsing (required by Stripe):
+
+```javascript
+app.use(
+  "/api/payment",
+  (req, res, next) => {
+    if (req.originalUrl === "/api/payment/webhook") {
+      express.raw({ type: "application/json" })(req, res, next);
+    } else {
+      express.json()(req, res, next);
+    }
+  },
+  paymentRoutes
+);
+```
+
+### 5. Inngest Background Jobs
+
+Configure Inngest for production:
+
+<Steps>
+  <Step title="Create Production Environment">
+    In Inngest dashboard, create a production environment.
+  </Step>
+  
+  <Step title="Update Signing Key">
+    ```bash
+    INNGEST_SIGNING_KEY=signkey-prod-xxxxxxxxxxxxx
+    ```
+  </Step>
+  
+  <Step title="Register Function Endpoint">
+    Point Inngest to your production endpoint: `https://yourdomain.com/api/inngest`
+  </Step>
+</Steps>
+
+<Accordion title="Inngest Functions">
+Two background functions are configured in `backend/src/config/inngest.js`:
+
+1. **User Sync** (`clerk.user.created`)
+   - Creates user in MongoDB
+   - Sends welcome email
+
+2. **User Deletion** (`clerk.user.deleted`)
+   - Removes user from MongoDB
+
+```javascript
+export const inngest = new Inngest({
+    id: "ecommerce-app",
+});
+
+const syncUser = inngest.createFunction(
+    {id: "sync-user"},
+    {event:"clerk.user.created"},
+    async ({event}) => {
+        await connectDB();
+        const newUser = {
+            clerkId: event.data.id,
+            email: event.data.email_addresses[0]?.email_address,
+            // ... more fields
+        };
+        await User.create(newUser);
+        await sendWelcomeEmail({ userName, userEmail });
+    }
+);
+```
+</Accordion>
+
+### 6. Email Configuration
+
+Set up Gmail for production emails:
+
+<Steps>
+  <Step title="Enable 2FA">
+    Enable 2-factor authentication on your Gmail account.
+  </Step>
+  
+  <Step title="Generate App Password">
+    Go to Google Account Security and generate an App Password.
+  </Step>
+  
+  <Step title="Configure Environment Variables">
+    ```bash
+    ADMIN_EMAIL=yourbusiness@gmail.com
+    EMAIL_PASSWORD=abcd efgh ijkl mnop
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+Gmail has sending limits (500 emails/day for free accounts). For high-volume production, consider upgrading to Google Workspace or using a dedicated email service like SendGrid.
+</Warning>
+
+## CORS and Security
+
+### Production CORS Configuration
+
+In production, CORS is restricted to your frontend domain:
+
+```javascript
+const corsOptions = {
+  origin: ENV.NODE_ENV === "production" 
+    ? ENV.CLIENT_URL  // Only allow your production domain
+    : function (origin, callback) {
+        // Development allows multiple origins
+      },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'clerk-session-id']
+};
+```
+
+Set your production frontend URL:
+
+```bash
+CLIENT_URL=https://www.donpalitojr.com
+```
+
+### Security Checklist
+
+<Warning>
+Before going live, verify these security measures:
+</Warning>
+
+- [ ] All API keys are production keys (not test keys)
+- [ ] Environment variables are secured (not in version control)
+- [ ] CORS is configured for production domain only
+- [ ] MongoDB network access is restricted
+- [ ] Clerk webhook secret is configured
+- [ ] Stripe webhook secret is configured
+- [ ] HTTPS is enabled on production domain
+- [ ] Rate limiting is configured (if needed)
+- [ ] Error messages don't expose sensitive data
+
+## Static File Serving
+
+In production, the backend serves the admin panel as static files:
+
+```javascript
+// backend/src/server.js
+if (ENV.NODE_ENV === "production") {
+    app.use(express.static(path.join(__dirname, "../admin/dist")));
+    app.get("/{*any}", (req, res) => {
+        res.sendFile(path.join(__dirname, "../admin", "dist", "index.html"));
+    });
+}
+```
+
+This serves the built React app from `admin/dist/` for all non-API routes.
+
+## Hosting Recommendations
+
+Don Palito Jr can be deployed to various platforms:
+
+### Railway (Recommended)
+
+<Steps>
+  <Step title="Connect Repository">
+    Connect your GitHub repository to Railway.
+  </Step>
+  
+  <Step title="Configure Build">
+    Railway will automatically detect Node.js. Set:
+    - **Build Command:** `npm run build`
+    - **Start Command:** `npm start`
+  </Step>
+  
+  <Step title="Add Environment Variables">
+    Add all required environment variables from the [Environment Variables](/deployment/environment-variables) page.
+  </Step>
+  
+  <Step title="Deploy">
+    Railway will build and deploy your application.
+  </Step>
+</Steps>
+
+### Render
+
+<Steps>
+  <Step title="Create Web Service">
+    Create a new Web Service and connect your repository.
+  </Step>
+  
+  <Step title="Configure Service">
+    - **Build Command:** `npm run build`
+    - **Start Command:** `npm start`
+    - **Environment:** Node
+  </Step>
+  
+  <Step title="Set Environment Variables">
+    Add all environment variables in the Environment section.
+  </Step>
+</Steps>
+
+### DigitalOcean App Platform
+
+<Steps>
+  <Step title="Create App">
+    Connect your GitHub repository.
+  </Step>
+  
+  <Step title="Configure Component">
+    - **Type:** Web Service
+    - **Build Command:** `npm run build`
+    - **Run Command:** `npm start`
+  </Step>
+  
+  <Step title="Add Environment Variables">
+    Configure all required environment variables.
+  </Step>
+</Steps>
+
+### VPS (Ubuntu Server)
+
+For self-hosted deployment:
+
+```bash
+# Install Node.js 20
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# Clone repository
+git clone https://github.com/yourusername/donpalitojr.git
+cd donpalitojr
+
+# Create .env file
+nano backend/.env
+# Add all environment variables
+
+# Build and start
+npm run build
+npm start
+```
+
+Use PM2 for process management:
+
+```bash
+sudo npm install -g pm2
+cd backend
+pm2 start npm --name "donpalitojr" -- start
+pm2 startup
+pm2 save
+```
+
+<Note>
+For VPS deployment, also configure:
+- Nginx as reverse proxy
+- SSL certificate (Let's Encrypt)
+- Firewall (UFW)
+- Automatic security updates
+</Note>
+
+## Health Check
+
+The application includes a health check endpoint:
+
+```bash
+curl https://yourdomain.com/api/health
+```
+
+Expected response:
+
+```json
+{
+  "message": "Success"
+}
+```
+
+Root endpoint (`/`) also returns API information:
+
+```json
+{
+  "message": "API funcionando correctamente",
+  "status": "ok",
+  "endpoints": ["/api/health", "/api/products", "/api/cart"]
+}
+```
+
+## Post-Deployment Verification
+
+After deployment, verify these components:
+
+<Steps>
+  <Step title="Database Connection">
+    Check server logs for MongoDB connection confirmation:
+    ```
+    ✅ Connected to MongoDB: cluster0-xxxxx.mongodb.net
+    ```
+  </Step>
+  
+  <Step title="API Endpoints">
+    Test critical endpoints:
+    - `GET /api/health`
+    - `GET /api/products`
+  </Step>
+  
+  <Step title="Admin Panel">
+    Navigate to your domain and verify the admin panel loads.
+  </Step>
+  
+  <Step title="Webhooks">
+    Test webhooks:
+    - Create a test user in Clerk → verify webhook triggers
+    - Make a test payment in Stripe → verify webhook processes
+  </Step>
+  
+  <Step title="Background Jobs">
+    Check Inngest dashboard for function execution logs.
+  </Step>
+  
+  <Step title="Email Delivery">
+    Create a test user and verify welcome email is sent.
+  </Step>
+</Steps>
+
+## Monitoring and Logs
+
+### Server Startup Logs
+
+When the server starts successfully, you should see:
+
+```
+✅ Connected to MongoDB: cluster0-xxxxx.mongodb.net
+🚀 Server is up and running!
+💻 Local:        http://localhost:3000
+🌍 Environment:  production
+```
+
+### Important Log Points
+
+- **MongoDB connection**: `backend/src/config/db.js:7`
+- **Server startup**: `backend/src/server.js:124-136`
+- **Webhook events**: `backend/src/server.js:78`
+- **Inngest sync**: `backend/src/config/inngest.js:15,42`
+
+### Recommended Monitoring
+
+- **Application monitoring**: Use services like Sentry or LogRocket
+- **Uptime monitoring**: UptimeRobot or Pingdom
+- **Performance**: New Relic or Datadog
+- **Error tracking**: Sentry integration
+
+## Troubleshooting
+
+<Accordion title="MongoDB Connection Failed">
+**Symptoms:** Server exits with "MONGODB connection error"
+
+**Solutions:**
+- Verify `DB_URL` is correct
+- Check MongoDB Atlas IP whitelist
+- Verify database user credentials
+- Ensure cluster is active
+</Accordion>
+
+<Accordion title="Clerk Webhooks Not Working">
+**Symptoms:** Users not syncing to database
+
+**Solutions:**
+- Verify `CLERK_WEBHOOK_SECRET` matches dashboard
+- Check webhook endpoint URL is correct
+- Ensure Inngest is configured
+- Review webhook logs in Clerk dashboard
+</Accordion>
+
+<Accordion title="Stripe Payments Failing">
+**Symptoms:** Checkout not completing
+
+**Solutions:**
+- Verify using live keys (not test keys)
+- Check webhook endpoint is configured
+- Verify `STRIPE_WEBHOOK_SECRET`
+- Review webhook logs in Stripe dashboard
+</Accordion>
+
+<Accordion title="CORS Errors">
+**Symptoms:** Frontend can't connect to API
+
+**Solutions:**
+- Verify `CLIENT_URL` matches your frontend domain
+- Ensure `NODE_ENV=production`
+- Check frontend is using correct API URL
+- Verify credentials are enabled in fetch requests
+</Accordion>
+
+<Accordion title="Admin Panel 404 Errors">
+**Symptoms:** Admin routes return 404
+
+**Solutions:**
+- Ensure `npm run build` completed successfully
+- Verify `admin/dist/` directory exists
+- Check `NODE_ENV=production` is set
+- Restart the server after building
+</Accordion>
+
+## Next Steps
+
+After successful deployment:
+
+- Set up automated backups for MongoDB
+- Configure domain and SSL certificate
+- Set up monitoring and alerts
+- Implement rate limiting if needed
+- Review and optimize performance
+- Set up CI/CD pipeline for automated deployments
+
+For development workflow, see the [API Reference](/api/products) documentation.

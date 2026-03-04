@@ -1,0 +1,370 @@
+---
+title: 'Order Management'
+description: 'Complete order lifecycle management from creation to delivery with status tracking and email notifications'
+---
+
+## Overview
+
+Don Palito Jr implements a comprehensive order management system that handles the entire order lifecycle. Orders progress through multiple stages from creation to delivery, with automatic email notifications and invoice generation.
+
+## Order Schema
+
+Orders are built on a MongoDB schema with detailed information about items, shipping, and payment:
+
+```javascript
+const orderSchema = new mongoose.Schema({
+    user: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true
+    },
+    clerkId: {
+        type: String,
+        required: true,
+    },
+    orderItems: [orderItemSchema],
+    shippingAddress: {
+        type: shippingAddressSchema,
+        required: true
+    },
+    paymentResult: {
+        id: String,
+        status: String,
+    },
+    totalPrice: {
+        type: Number,
+        required: true,
+        min: 0
+    },
+    status: {
+        type: String,
+        enum: ["pending", "paid", "in_preparation", "ready", "delivered", "canceled", "rejected"],
+        default: "pending"
+    },
+    paidAt: {
+        type: Date,
+    },
+    deliveredAt: {
+        type: Date,
+    },
+},
+{
+    timestamps: true
+});
+```
+
+### Order Items Schema
+
+```javascript
+const orderItemSchema = new mongoose.Schema({
+    product: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Product",
+        required: true
+    },
+    name: {
+        type: String
+    },
+    price: {
+        type: Number,
+        required: true,
+        min: 0
+    },
+    quantity: {
+        type: Number,
+        required: true,
+        min: 1,
+    }
+});
+```
+
+### Shipping Address Schema
+
+```javascript
+const shippingAddressSchema = new mongoose.Schema({
+    fullName: {
+        type: String,
+        required: true
+    },
+    streetAddress: {
+        type: String,
+        required: true
+    },
+    city: {
+        type: String,
+        required: true
+    },
+    phoneNumber: {
+        type: String,
+        required: true
+    }
+});
+```
+
+## Order Lifecycle
+
+Orders progress through the following statuses:
+
+<CardGroup cols={2}>
+  <Card title="Pending" icon="clock">
+    Initial state when order is created. Awaiting payment confirmation.
+  </Card>
+  
+  <Card title="Paid" icon="check-circle">
+    Payment confirmed. Invoice generated and sent to customer.
+  </Card>
+  
+  <Card title="In Preparation" icon="utensils">
+    Order is being prepared by the kitchen or warehouse.
+  </Card>
+  
+  <Card title="Ready" icon="box-check">
+    Order is prepared and ready for pickup or delivery.
+  </Card>
+  
+  <Card title="Delivered" icon="truck">
+    Order has been delivered to the customer.
+  </Card>
+  
+  <Card title="Canceled/Rejected" icon="circle-xmark">
+    Order was canceled by customer or rejected by admin.
+  </Card>
+</CardGroup>
+
+## Creating Orders
+
+Orders can be created through direct order creation or via the Stripe payment webhook:
+
+```javascript
+export async function createOrder(req, res) {
+    const user = req.user;
+    const { orderItems, shippingAddress, paymentResult, totalPrice } = req.body;
+
+    if (!orderItems || orderItems.length === 0) {
+        return res.status(400).json({ error: "No order items" });
+    }
+
+    // Validate stock availability
+    for (const item of orderItems) {
+        const product = await Product.findById(item.product._id);
+        if (!product) {
+            return res.status(404).json({ error: `Product ${item.name} not found` });
+        }
+        if (product.stock < item.quantity) {
+            return res.status(400).json({ error: `Insufficient stock for ${product.name}` });
+        }
+    }
+
+    const order = await Order.create({
+        user: user._id,
+        clerkId: user.clerkId,
+        orderItems,
+        shippingAddress,
+        paymentResult,
+        totalPrice,
+    });
+
+    // Decrement stock
+    for (const item of orderItems) {
+        await Product.findByIdAndUpdate(item.product._id, {
+            $inc: { stock: -item.quantity },
+        });
+    }
+
+    // Send confirmation emails
+    const emailData = {
+        orderId:       order._id.toString(),
+        userEmail:     user.email,
+        userName:      user.name,
+        items:         orderItems.map(item => ({
+            name:     item.name || "Producto",
+            quantity: item.quantity,
+            price:    item.price,
+        })),
+        total:          totalPrice,
+        discount:       0,
+        shippingAddress,
+        emailNotifications: user.emailNotifications,
+    };
+
+    Promise.allSettled([
+        sendOrderCreatedAdminEmail(emailData),
+        sendOrderCreatedClientEmail(emailData),
+    ]);
+
+    return res.status(201).json({ message: "Order created successfully", order });
+}
+```
+
+<Note>
+  Stock validation happens before order creation to prevent race conditions. The stock is decremented atomically using MongoDB's `$inc` operator.
+</Note>
+
+## Viewing User Orders
+
+Customers can view their order history with review status information:
+
+```javascript
+export async function getUserOrders(req, res) {
+    const orders = await Order.find({ clerkId: req.user.clerkId })
+        .populate("orderItems.product", "name images price")
+        .sort({ createdAt: -1 });
+
+    const orderIds = orders.map((order) => order._id);
+    const reviews = await Review.find({ orderId: { $in: orderIds } });
+    const reviewedOrderIds = new Set(reviews.map((review) => review.orderId.toString()));
+
+    const ordersWithReviewStatus = orders.map((order) => {
+        const orderObj = order.toObject();
+        
+        const orderItemsWithNames = orderObj.orderItems.map(item => ({
+            _id: item._id,
+            product: item.product,
+            name: item.name || item.product?.name || 'Producto no disponible',
+            price: item.price,
+            quantity: item.quantity
+        }));
+
+        return {
+            ...orderObj,
+            orderItems: orderItemsWithNames,
+            hasReviewed: reviewedOrderIds.has(order._id.toString()),
+        };
+    });
+
+    return res.status(200).json({ orders: ordersWithReviewStatus });
+}
+```
+
+<Tip>
+  The order list includes a `hasReviewed` flag to help the frontend show review prompts only for orders that haven't been reviewed yet.
+</Tip>
+
+## Admin Order Management
+
+Administrators can view all orders and update their status:
+
+```javascript
+export async function getAllOrders (_, res) {
+    const orders = await Order.find()
+        .populate("user", "name email")
+        .populate("orderItems.product")
+        .sort({createdAt: -1});
+    return res.status(200).json({orders});
+}
+```
+
+## Order Status Updates
+
+Administrators can update order status, which triggers appropriate email notifications:
+
+```javascript
+export async function updateOrderStatus (req, res) {
+    const {orderId} = req.params;
+    const {status} = req.body;
+
+    const VALID_STATUSES = ["pending", "paid", "in_preparation", "ready", "delivered", "canceled", "rejected"];
+    
+    if (!VALID_STATUSES.includes(status)) {
+        return res.status(400).json({message: "Invalid status"});
+    }
+
+    const order = await Order.findById(orderId)
+        .populate('user')
+        .populate('orderItems.product', 'name price');
+
+    if (!order) {
+        return res.status(404).json({message: "Order not found"});
+    }
+
+    const previousStatus = order.status;
+    order.status = status;
+
+    if (status === "paid" && !order.paidAt) {
+        order.paidAt = new Date();
+    }
+
+    if (status === "delivered" && !order.deliveredAt) {
+        order.deliveredAt = new Date();
+    }
+
+    await order.save();
+
+    // Send status update emails and invoice for paid orders
+    // ...
+
+    return res.status(200).json({message: "Order status updated successfully", order});
+}
+```
+
+<Accordion title="Email Notifications">
+  When an order status changes:
+  - Both admin and customer receive email notifications
+  - When status changes to "paid", invoices (PDF and CSV) are generated and sent
+  - Email notifications respect user preferences (`emailNotifications` field)
+</Accordion>
+
+## Invoice Generation
+
+When an order is marked as paid, the system automatically generates invoices:
+
+```javascript
+export async function downloadInvoice(req, res) {
+    const { orderId } = req.params;
+    const user = req.user;
+
+    const order = await Order.findById(orderId)
+        .populate("orderItems.product", "name price images")
+        .lean();
+
+    if (!order) return res.status(404).json({ error: "Pedido no encontrado." });
+    if (order.clerkId !== user.clerkId)
+        return res.status(403).json({ error: "No autorizado." });
+    if (order.status !== "paid" && order.status !== "delivered")
+        return res.status(400).json({ error: "La factura solo está disponible para pedidos pagados o entregados." });
+
+    const invoiceNumber = `FV-${new Date().getFullYear()}-${orderId.slice(-8).toUpperCase()}`;
+    const paymentMethod = order.paymentResult?.id?.startsWith("pi_") ? "stripe" : "transferencia";
+    
+    const invoiceData = {
+        orderId,
+        date: new Date(order.paidAt || order.createdAt),
+        paymentMethod,
+        items: order.orderItems.map((item) => ({
+            name: item.name || item.product?.name || "Producto",
+            quantity: item.quantity,
+            price: item.price,
+        })),
+        shipping: 0,
+        discount: 0,
+        customer: {
+            name: order.shippingAddress?.fullName || user.name,
+            documentType: user.documentType || "cedula",
+            documentNumber: user.documentNumber || "",
+            email: user.email,
+            phone: order.shippingAddress?.phoneNumber || user.phone || "",
+            address: order.shippingAddress?.streetAddress || "",
+            city: order.shippingAddress?.city || "",
+        },
+    };
+
+    const pdfBuffer = await generateInvoicePDF(invoiceData);
+
+    res.set({
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="factura-${invoiceNumber}.pdf"`,
+        "Content-Length": pdfBuffer.length,
+    });
+    return res.send(pdfBuffer);
+}
+```
+
+<Note>
+  Invoices are only available for orders with "paid" or "delivered" status. The invoice number format is `FV-YEAR-ORDERID` (e.g., FV-2026-A1B2C3D4).
+</Note>
+
+<Accordion title="Source Code Reference">
+  - Order Model: `backend/src/models/order.model.js:1-84`
+  - Order Controller: `backend/src/controllers/order.controller.js:8-161`
+  - Admin Controller: `backend/src/controllers/admin.controller.js:108-247`
+</Accordion>

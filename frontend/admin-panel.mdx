@@ -1,0 +1,351 @@
+---
+title: 'Admin Panel'
+description: 'Admin dashboard for managing products, orders, customers, and coupons'
+---
+
+## Overview
+
+The Don Palito Jr admin panel is a separate web application for administrators to manage the e-commerce platform. It provides interfaces for product management, order processing, customer administration, and coupon creation.
+
+## Technology Stack
+
+<CardGroup cols={2}>
+  <Card title="React 19.2" icon="react" color="#61DAFB">
+    Latest React with improved performance
+  </Card>
+  <Card title="Vite 7.2" icon="bolt" color="#646CFF">
+    Next-generation build tool
+  </Card>
+  <Card title="Tailwind CSS 4.1" icon="palette" color="#06B6D4">
+    Modern utility-first CSS
+  </Card>
+  <Card title="DaisyUI 5.5" icon="layer-group" color="#5B3A29">
+    Component library for Tailwind
+  </Card>
+</CardGroup>
+
+### Key Dependencies
+
+- **Authentication**: Clerk React (`@clerk/clerk-react`)
+- **State Management**: Zustand
+- **Data Fetching**: TanStack Query (`@tanstack/react-query`)
+- **HTTP Client**: Axios
+- **Routing**: React Router v7
+- **Icons**: Lucide React
+- **Monitoring**: Sentry React
+
+## Setup and Development
+
+<Steps>
+  <Step title="Install Dependencies">
+    ```bash
+    cd source/admin
+    npm install
+    ```
+  </Step>
+
+  <Step title="Configure Environment">
+    Create a `.env` file:
+    ```bash
+    VITE_CLERK_PUBLISHABLE_KEY=your_clerk_key
+    VITE_API_URL=http://localhost:3000/api
+    VITE_SENTRY_DSN=your_sentry_dsn
+    ```
+  </Step>
+
+  <Step title="Start Development Server">
+    ```bash
+    npm run dev
+    ```
+    Admin panel runs on `http://localhost:5173`
+  </Step>
+
+  <Step title="Build for Production">
+    ```bash
+    npm run build
+    ```
+  </Step>
+</Steps>
+
+## Admin Role Protection
+
+The admin panel uses Clerk's public metadata to verify admin access:
+
+```jsx
+// src/App.jsx
+function App() {
+  const { isSignedIn, isLoaded } = useAuth();
+  const { user, isLoaded: userLoaded } = useUser();
+  
+  if (!isLoaded || !userLoaded) {
+    return <PageLoader />;
+  }
+  
+  const isAdmin = user?.publicMetadata?.role === 'admin';
+  
+  return (
+    <Routes>
+      <Route 
+        path="/login" 
+        element={
+          isSignedIn 
+            ? (isAdmin ? <Navigate to="/dashboard" /> : <Navigate to="/unauthorized" />) 
+            : <LoginPage />
+        }
+      />
+      <Route path="/unauthorized" element={<UnauthorizedPage />} />
+      <Route 
+        path="/" 
+        element={
+          !isSignedIn ? (
+            <Navigate to="/login" />
+          ) : !isAdmin ? (
+            <Navigate to="/unauthorized" replace />
+          ) : (
+            <DashboardLayout />
+          )
+        }
+      >
+        <Route index element={<Navigate to="dashboard" />} />
+        <Route path="dashboard" element={<DashboardPage />} />
+        <Route path="products" element={<ProductsPage />} />
+        <Route path="orders" element={<OrdersPage />} />
+        <Route path="customers" element={<CustomersPage />} />
+        <Route path="coupons" element={<CouponsPage />} />
+      </Route>
+    </Routes>
+  );
+}
+```
+
+<Warning>
+  Only users with `role: 'admin'` in Clerk's `publicMetadata` can access the admin panel. All other users are redirected to the unauthorized page.
+</Warning>
+
+## Project Structure
+
+```
+src/
+├── components/
+│   ├── AuthProvider.jsx    # Clerk authentication wrapper
+│   ├── Navbar.jsx           # Top navigation bar
+│   ├── Sidebar.jsx          # Side navigation menu
+│   └── PageLoader.jsx       # Loading spinner
+├── layouts/
+│   └── DashboardLayout.jsx  # Main admin layout
+├── lib/
+│   ├── api.js               # API client functions
+│   └── utils.js             # Utility functions
+├── pages/
+│   ├── DashboardPage.jsx    # Analytics overview
+│   ├── ProductsPage.jsx     # Product management
+│   ├── OrdersPage.jsx       # Order processing
+│   ├── CustomersPage.jsx    # Customer administration
+│   ├── CouponsPage.jsx      # Coupon management
+│   ├── LoginPage.jsx        # Admin login
+│   └── UnauthorizedPage.jsx # Access denied page
+├── App.jsx
+└── main.jsx
+```
+
+## Admin Features
+
+### Product Management
+
+The products page allows admins to create, update, and delete products with image uploads:
+
+```jsx
+function ProductsPage() {
+  const [showModal, setShowModal] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [formData, setFormData] = useState({
+    name: "",
+    category: "",
+    price: "",
+    stock: "",
+    description: "",
+  });
+  const [images, setImages] = useState([]);
+  
+  const queryClient = useQueryClient();
+  
+  // Fetch products
+  const { data: products = [] } = useQuery({
+    queryKey: ["products"],
+    queryFn: productApi.getAll,
+  });
+  
+  // Create product mutation
+  const createProductMutation = useMutation({
+    mutationFn: productApi.create,
+    onSuccess: () => {
+      closeModal();
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+    },
+  });
+  
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const formDataToSend = new FormData();
+    formDataToSend.append("name", formData.name);
+    formDataToSend.append("description", formData.description);
+    formDataToSend.append("price", formData.price);
+    formDataToSend.append("stock", formData.stock);
+    formDataToSend.append("category", formData.category);
+    
+    if (images.length > 0) {
+      images.forEach((image) => formDataToSend.append("images", image));
+    }
+    
+    createProductMutation.mutate(formDataToSend);
+  };
+}
+```
+
+### Product Categories
+
+The admin panel supports the following product categories:
+
+- **Palitos Premium** - High-quality traditional sticks
+- **Palitos Cocteleros** - Cocktail-style sticks
+- **Dulces** - Sweet treats
+- **Especiales** - Special edition items
+- **Nuevos** - New arrivals
+
+### Order Management
+
+Admins can view and update order statuses:
+
+<Steps>
+  <Step title="View Orders">
+    Display all orders with customer information, items, and current status
+  </Step>
+  <Step title="Update Status">
+    Change order status between:
+    - Pending
+    - Processing
+    - Shipped
+    - Delivered
+    - Cancelled
+  </Step>
+  <Step title="View Details">
+    Access detailed order information including shipping address and payment details
+  </Step>
+</Steps>
+
+### Customer Administration
+
+Manage customer accounts:
+
+- View customer profiles and order history
+- Activate/deactivate accounts
+- View customer addresses and preferences
+- Monitor customer activity
+
+### Coupon Management
+
+Create and manage promotional coupons:
+
+- Set discount percentage or fixed amount
+- Configure expiration dates
+- Set usage limits
+- Track coupon redemptions
+
+## State Management with Zustand
+
+The admin panel uses Zustand for lightweight global state:
+
+```javascript
+import create from 'zustand';
+
+const useAdminStore = create((set) => ({
+  sidebarOpen: true,
+  toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+}));
+```
+
+## Data Fetching Configuration
+
+React Query is configured with optimized defaults:
+
+```javascript
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000,        // 5 minutes
+      gcTime: 10 * 60 * 1000,          // 10 minutes
+      retry: 1,
+      refetchOnWindowFocus: false,
+      refetchOnMount: true,
+      refetchOnReconnect: true,
+      networkMode: 'online',
+    },
+    mutations: {
+      retry: 0,
+      networkMode: 'online',
+    },
+  },
+})
+```
+
+## Error Monitoring with Sentry
+
+Sentry is integrated for error tracking and performance monitoring:
+
+```javascript
+import * as Sentry from "@sentry/react";
+
+Sentry.init({
+  dsn: import.meta.env.VITE_SENTRY_DSN,
+  sendDefaultPii: true,
+  enableLogs: true,
+  integrations: [Sentry.replayIntegration()],
+  replaysSessionSampleRate: 1.0,
+  replaysOnErrorSampleRate: 1.0,
+});
+```
+
+## Available Scripts
+
+<CodeGroup>
+```bash Development
+npm run dev
+```
+
+```bash Build
+npm run build
+```
+
+```bash Preview
+npm run preview
+```
+
+```bash Lint
+npm run lint
+```
+</CodeGroup>
+
+## Best Practices
+
+<Tip>
+  - Always verify admin role before rendering sensitive components
+  - Use React Query mutations for all data modifications
+  - Invalidate queries after successful mutations to refresh data
+  - Handle loading and error states in all components
+  - Use DaisyUI components for consistent UI
+</Tip>
+
+<Note>
+  The admin panel is a separate deployment from the customer-facing web app. They share the same API but have different access controls.
+</Note>
+
+## Security Considerations
+
+1. **Role-Based Access**: Only users with `admin` role can access the panel
+2. **Token Validation**: All API requests include JWT tokens from Clerk
+3. **Protected Routes**: Unauthorized users are redirected to `/unauthorized`
+4. **Secure Endpoints**: Backend validates admin permissions on every request
+
+<Warning>
+  Never expose admin credentials in client-side code. All admin verification happens server-side.
+</Warning>

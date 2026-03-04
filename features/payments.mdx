@@ -1,0 +1,425 @@
+---
+title: 'Payment Integration'
+description: 'Stripe payment processing with webhooks, multiple payment methods, and secure checkout'
+---
+
+## Overview
+
+Don Palito Jr integrates with Stripe to provide secure payment processing. The system supports both immediate Stripe payments and bank transfer orders, with automatic order creation via webhooks.
+
+## Stripe Configuration
+
+The payment system is initialized with Stripe credentials:
+
+```javascript
+import Stripe from "stripe";
+import { ENV } from "../config/env.js";
+
+const stripe = new Stripe(ENV.STRIPE_SECRET_KEY);
+```
+
+<Note>
+  Make sure to set `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` in your environment variables for proper payment processing.
+</Note>
+
+## Payment Methods Supported
+
+<CardGroup cols={2}>
+  <Card title="Stripe Payment" icon="credit-card">
+    Credit cards, debit cards, and other Stripe-supported payment methods with instant confirmation.
+  </Card>
+  
+  <Card title="Bank Transfer" icon="building-columns">
+    Manual bank transfer option for customers who prefer offline payments (pending admin approval).
+  </Card>
+</CardGroup>
+
+## Creating Payment Intent
+
+Before checkout, the system creates a Stripe Payment Intent with validated cart items and pricing:
+
+```javascript
+export async function createPaymentIntent(req, res) {
+    const { cartItems, shippingAddress, couponCode } = req.body;
+    const user = req.user;
+
+    if (!cartItems || cartItems.length === 0) {
+        return res.status(400).json({ error: "Cart is empty" });
+    }
+    if (!shippingAddress || !shippingAddress.fullName || !shippingAddress.streetAddress) {
+        return res.status(400).json({ error: "Shipping address is required" });
+    }
+
+    let subtotal = 0;
+    const validatedItems = [];
+
+    // Validate products and calculate subtotal
+    for (const item of cartItems) {
+        const product = await Product.findById(item.product._id);
+        if (!product) {
+            return res.status(404).json({ error: `Product ${item.product.name} not found` });
+        }
+
+        if (product.stock < item.quantity) {
+            return res.status(400).json({ error: `Insufficient stock for ${product.name}` });
+        }
+
+        subtotal += product.price * item.quantity;
+
+        validatedItems.push({
+            product: product._id.toString(),
+            price: product.price,
+            quantity: item.quantity
+        });
+    }
+
+    // Apply coupon discount if provided
+    let discount = 0;
+    let appliedCoupon = null;
+
+    if (couponCode) {
+        const coupon = await Coupon.findOne({ code: couponCode.toUpperCase().trim() });
+
+        const isValid =
+            coupon &&
+            coupon.isActive &&
+            (!coupon.expiresAt || new Date() < coupon.expiresAt);
+
+        if (!isValid) {
+            return res.status(400).json({ error: "El cupón no es válido o ha expirado." });
+        }
+
+        const alreadyUsed = coupon.usedBy.some(
+            (id) => id.toString() === user._id.toString()
+        );
+        if (alreadyUsed) {
+            return res.status(400).json({ error: "Ya usaste este cupón anteriormente." });
+        }
+        
+        if (coupon.discountType === "percentage") {
+            discount = Math.round((subtotal * coupon.discountValue) / 100);
+        } else {
+            discount = Math.min(coupon.discountValue, subtotal);
+        }
+
+        appliedCoupon = coupon;
+    }
+
+    const shipping = 10000;
+    const total = subtotal + shipping - discount;
+
+    if (total <= 0) {
+        return res.status(400).json({ error: "Invalid order total" });
+    }
+
+    const stripeAmount = Math.round(total * 100);
+
+    // Stripe minimum amount validation
+    const minAmountCOP = 2000;
+    if (total < minAmountCOP) {
+        return res.status(400).json({
+            error: `The minimum amount to process payments is $${minAmountCOP} COP`
+        });
+    }
+
+    // Get or create Stripe customer
+    let customer;
+    if (user.stripeCustomerId) {
+        try {
+            customer = await stripe.customers.retrieve(user.stripeCustomerId);
+        } catch (error) {
+            customer = null;
+        }
+    }
+
+    if (!customer) {
+        customer = await stripe.customers.create({
+            email: user.email,
+            name: user.name,
+            metadata: {
+                clerkId: user.clerkId,
+                userId: user._id.toString(),
+            },
+        });
+
+        await User.findByIdAndUpdate(user._id, { stripeCustomerId: customer.id });
+    }
+
+    // Create payment intent
+    const paymentIntent = await stripe.paymentIntents.create({
+        amount: stripeAmount,
+        currency: "cop",
+        customer: customer.id,
+        automatic_payment_methods: {
+            enabled: true,
+        },
+        metadata: {
+            clerkId: user.clerkId,
+            userId: user._id.toString(),
+            orderItems: JSON.stringify(validatedItems),
+            shippingAddress: JSON.stringify(shippingAddress),
+            couponCode: appliedCoupon ? appliedCoupon.code : "",
+            totalPrice: total.toString(),
+        },
+    });
+
+    res.status(200).json({
+        clientSecret: paymentIntent.client_secret,
+        paymentIntentId: paymentIntent.id
+    });
+}
+```
+
+<Tip>
+  The payment amount is stored in Stripe's metadata along with order details. This allows the webhook to automatically create the order when payment succeeds.
+</Tip>
+
+## Webhook Handling
+
+When a payment succeeds, Stripe sends a webhook that automatically creates the order:
+
+```javascript
+export async function handleWebhook(req, res) {
+    const sig = req.headers["stripe-signature"];
+    let event;
+
+    try {
+        event = stripe.webhooks.constructEvent(req.body, sig, ENV.STRIPE_WEBHOOK_SECRET);
+    } catch (err) {
+        console.error("Webhook signature verification failed:", err.message);
+        return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    if (event.type === "payment_intent.succeeded") {
+        const paymentIntent = event.data.object;
+
+        const { userId, clerkId, orderItems, shippingAddress, couponCode, totalPrice } = paymentIntent.metadata;
+
+        // Check if order already exists
+        const existingOrder = await Order.findOne({ "paymentResult.id": paymentIntent.id });
+
+        if (existingOrder) {
+            console.log("Order already exists for payment:", paymentIntent.id);
+            return res.json({ received: true });
+        }
+
+        const items = JSON.parse(orderItems);
+        const parsedShippingAddress = JSON.parse(shippingAddress);
+
+        const enrichedOrderItems = [];
+
+        for (const item of items) {
+            const product = await Product.findById(item.product);
+
+            enrichedOrderItems.push({
+                product: product?._id ?? item.product,
+                name: product?.name ?? "Producto no disponible",
+                price: item.price,
+                quantity: item.quantity,
+            });
+        }
+
+        // Create order
+        const order = await Order.create({
+            user: userId,
+            clerkId,
+            orderItems: enrichedOrderItems,
+            shippingAddress: parsedShippingAddress,
+            paymentResult: {
+                id: paymentIntent.id,
+                status: "succeeded",
+            },
+            totalPrice,
+        });
+
+        // Decrement product stock
+        for (const item of items) {
+            await Product.findByIdAndUpdate(item.product, {
+                $inc: { stock: -item.quantity },
+            });
+        }
+
+        // Mark coupon as used
+        if (couponCode) {
+            await Coupon.findOneAndUpdate(
+                { code: couponCode },
+                { $addToSet: { usedBy: userId } } 
+            );
+        }
+
+        console.log("Order created successfully:", order._id);
+
+        // Send confirmation emails
+        const dbUser = await User.findById(userId);
+        if (dbUser) {
+            const emailData = {
+                orderId:       order._id.toString(),
+                userEmail:     dbUser.email,
+                userName:      dbUser.name,
+                items:         enrichedOrderItems.map(item => ({
+                    name:     item.name,
+                    quantity: item.quantity,
+                    price:    item.price,
+                })),
+                total:          parseFloat(totalPrice),
+                discount:       0,
+                shippingAddress: parsedShippingAddress,
+                emailNotifications: dbUser.emailNotifications,
+            };
+
+            Promise.allSettled([
+                sendOrderCreatedAdminEmail(emailData),
+                sendOrderCreatedClientEmail(emailData),
+            ]);
+        }
+    }
+
+    res.json({ received: true });
+}
+```
+
+<Accordion title="Webhook Security">
+  The webhook handler verifies the Stripe signature using `stripe.webhooks.constructEvent()` to ensure the request genuinely comes from Stripe. This prevents malicious actors from creating fake orders.
+</Accordion>
+
+<Note>
+  The webhook checks for duplicate orders by looking for existing orders with the same payment intent ID, preventing double-processing.
+</Note>
+
+## Bank Transfer Orders
+
+For customers who prefer bank transfers, the system creates pending orders:
+
+```javascript
+export async function createTransferOrder(req, res) {
+    const { cartItems, shippingAddress, couponCode } = req.body;
+    const user = req.user;
+
+    if (!cartItems?.length) {
+        return res.status(400).json({ error: "Cart is empty" });
+    }
+    if (!shippingAddress?.fullName || !shippingAddress?.streetAddress) {
+        return res.status(400).json({ error: "Shipping address is required" });
+    }
+
+    let subtotal = 0;
+    const orderItems = [];
+
+    for (const item of cartItems) {
+        const product = await Product.findById(item.product._id);
+        if (!product) {
+            return res.status(404).json({ error: `Producto no encontrado` });
+        }
+        if (product.stock < item.quantity) {
+            return res.status(400).json({ error: `Stock insuficiente para ${product.name}` });
+        }
+        subtotal += product.price * item.quantity;
+        orderItems.push({
+            product: product._id,
+            name: product.name,
+            price: product.price,
+            quantity: item.quantity,
+        });
+    }
+
+    // Apply coupon discount
+    let discount = 0;
+    let appliedCoupon = null;
+
+    if (couponCode) {
+        const coupon = await Coupon.findOne({ code: couponCode.toUpperCase().trim() });
+        const isValid = coupon && coupon.isActive &&
+            (!coupon.expiresAt || new Date() < coupon.expiresAt);
+
+        if (!isValid) {
+            return res.status(400).json({ error: "El cupón no es válido o ha expirado." });
+        }
+
+        const alreadyUsed = coupon.usedBy.some(
+            (id) => id.toString() === user._id.toString()
+        );
+        if (alreadyUsed) {
+            return res.status(400).json({ error: "Ya usaste este cupón anteriormente." });
+        }
+
+        discount = coupon.discountType === "percentage"
+            ? Math.round((subtotal * coupon.discountValue) / 100)
+            : Math.min(coupon.discountValue, subtotal);
+
+        appliedCoupon = coupon;
+    }
+
+    const totalPrice = subtotal - discount;
+
+    const order = await Order.create({
+        user: user._id,
+        clerkId: user.clerkId,
+        orderItems,
+        shippingAddress,
+        paymentResult: { id: `transfer_${Date.now()}`, status: "pending" },
+        totalPrice,
+        status: "pending",
+    });
+
+    // Decrement stock
+    for (const item of orderItems) {
+        await Product.findByIdAndUpdate(item.product, {
+            $inc: { stock: -item.quantity },
+        });
+    }
+
+    // Mark coupon as used
+    if (appliedCoupon) {
+        await Coupon.findOneAndUpdate(
+            { code: appliedCoupon.code },
+            { $addToSet: { usedBy: user._id } }
+        );
+    }
+
+    // Send order confirmation emails
+    const emailData = {
+        orderId: order._id.toString(),
+        userEmail: user.email,
+        userName: user.name,
+        items: orderItems.map((i) => ({ name: i.name, quantity: i.quantity, price: i.price })),
+        total: totalPrice,
+        discount,
+        shippingAddress,
+        emailNotifications: user.emailNotifications,
+    };
+
+    Promise.allSettled([
+        sendOrderCreatedAdminEmail(emailData),
+        sendOrderCreatedClientEmail(emailData),
+    ]);
+
+    return res.status(201).json({ order });
+}
+```
+
+<Tip>
+  Bank transfer orders start with "pending" status and must be manually approved by an administrator after payment verification.
+</Tip>
+
+## Currency and Amount Handling
+
+<Note>
+  All prices are in Colombian Pesos (COP). Stripe requires amounts in cents, so the amount is multiplied by 100 before creating the payment intent.
+</Note>
+
+**Minimum Payment**: The system enforces a minimum payment of 2,000 COP to comply with Stripe's requirements.
+
+## Customer Management
+
+The system automatically creates or retrieves Stripe customers:
+
+- Existing customers are retrieved using their stored `stripeCustomerId`
+- New customers are created and their ID is saved to the user profile
+- Customer metadata includes the Clerk ID and internal user ID for easy lookup
+
+<Accordion title="Source Code Reference">
+  - Payment Controller: `backend/src/controllers/payment.controller.js:11-363`
+  - Stripe Integration: Lines 9, 115-130 (Payment Intent creation)
+  - Webhook Handler: Lines 145-249
+  - Bank Transfer: Lines 251-363
+</Accordion>

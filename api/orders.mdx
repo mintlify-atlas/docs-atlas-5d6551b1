@@ -1,0 +1,374 @@
+---
+title: 'Orders'
+description: 'Order management endpoints for creating orders and retrieving order history'
+---
+
+<Note>
+  All order endpoints require authentication. Include a valid authentication token in your request headers.
+</Note>
+
+## Create Order
+
+<api method="POST" endpoint="/api/orders" />
+
+Create a new order. This endpoint validates stock availability, creates the order, reduces product stock, and sends confirmation emails.
+
+### Authentication
+
+Required. User must be authenticated via Clerk.
+
+### Request Body
+
+<ParamField body="orderItems" type="array" required>
+  Array of items to order
+</ParamField>
+
+<ParamField body="orderItems[].product" type="object" required>
+  Product object with `_id` field
+</ParamField>
+
+<ParamField body="orderItems[].name" type="string">
+  Product name (optional, will use product data if not provided)
+</ParamField>
+
+<ParamField body="orderItems[].price" type="number" required>
+  Product price at time of order
+</ParamField>
+
+<ParamField body="orderItems[].quantity" type="number" required>
+  Quantity ordered (minimum 1)
+</ParamField>
+
+<ParamField body="shippingAddress" type="object" required>
+  Shipping address details
+</ParamField>
+
+<ParamField body="shippingAddress.fullName" type="string" required>
+  Recipient's full name
+</ParamField>
+
+<ParamField body="shippingAddress.streetAddress" type="string" required>
+  Street address
+</ParamField>
+
+<ParamField body="shippingAddress.city" type="string" required>
+  City
+</ParamField>
+
+<ParamField body="shippingAddress.phoneNumber" type="string" required>
+  Contact phone number
+</ParamField>
+
+<ParamField body="paymentResult" type="object" required>
+  Payment result information
+</ParamField>
+
+<ParamField body="paymentResult.id" type="string">
+  Payment transaction ID
+</ParamField>
+
+<ParamField body="paymentResult.status" type="string">
+  Payment status (e.g., "succeeded", "pending")
+</ParamField>
+
+<ParamField body="totalPrice" type="number" required>
+  Total order price
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="order" type="object">
+  The created order object
+</ResponseField>
+
+<ResponseField name="order._id" type="string">
+  Order unique identifier
+</ResponseField>
+
+<ResponseField name="order.user" type="string">
+  User ID reference
+</ResponseField>
+
+<ResponseField name="order.clerkId" type="string">
+  Clerk user ID
+</ResponseField>
+
+<ResponseField name="order.orderItems" type="array">
+  Array of ordered items
+</ResponseField>
+
+<ResponseField name="order.shippingAddress" type="object">
+  Shipping address details
+</ResponseField>
+
+<ResponseField name="order.paymentResult" type="object">
+  Payment result information
+</ResponseField>
+
+<ResponseField name="order.totalPrice" type="number">
+  Total order price
+</ResponseField>
+
+<ResponseField name="order.status" type="string">
+  Order status: "pending", "paid", "in_preparation", "ready", "delivered", "canceled", "rejected"
+</ResponseField>
+
+<ResponseField name="order.createdAt" type="string">
+  ISO 8601 timestamp of order creation
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X POST https://api.donpalitojr.com/api/orders \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "orderItems": [
+      {
+        "product": {"_id": "65f8a1b2c3d4e5f6g7h8i9j3"},
+        "name": "Empanada de Pollo",
+        "price": 3500,
+        "quantity": 2
+      }
+    ],
+    "shippingAddress": {
+      "fullName": "Juan Pérez",
+      "streetAddress": "Calle 123 #45-67",
+      "city": "Bogotá",
+      "phoneNumber": "+57 300 123 4567"
+    },
+    "paymentResult": {
+      "id": "transfer_1234567890",
+      "status": "pending"
+    },
+    "totalPrice": 7000
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "message": "Order created successfully",
+  "order": {
+    "_id": "65f8a1b2c3d4e5f6g7h8i9j0",
+    "user": "65f8a1b2c3d4e5f6g7h8i9j1",
+    "clerkId": "user_2abc123def456",
+    "orderItems": [
+      {
+        "product": "65f8a1b2c3d4e5f6g7h8i9j3",
+        "name": "Empanada de Pollo",
+        "price": 3500,
+        "quantity": 2
+      }
+    ],
+    "shippingAddress": {
+      "fullName": "Juan Pérez",
+      "streetAddress": "Calle 123 #45-67",
+      "city": "Bogotá",
+      "phoneNumber": "+57 300 123 4567"
+    },
+    "paymentResult": {
+      "id": "transfer_1234567890",
+      "status": "pending"
+    },
+    "totalPrice": 7000,
+    "status": "pending",
+    "createdAt": "2024-03-15T10:30:00.000Z"
+  }
+}
+```
+
+### Error Responses
+
+<ResponseField name="400 Bad Request">
+  No order items or insufficient stock
+</ResponseField>
+
+```json
+{
+  "error": "No order items"
+}
+```
+
+```json
+{
+  "error": "Insufficient stock for Empanada de Pollo"
+}
+```
+
+<ResponseField name="404 Not Found">
+  Product not found
+</ResponseField>
+
+```json
+{
+  "error": "Product Empanada de Pollo not found"
+}
+```
+
+---
+
+## Get User Orders
+
+<api method="GET" endpoint="/api/orders" />
+
+Retrieve all orders for the authenticated user, sorted by most recent first. Includes review status for each order.
+
+### Authentication
+
+Required. User must be authenticated via Clerk.
+
+### Response
+
+<ResponseField name="orders" type="array">
+  Array of order objects
+</ResponseField>
+
+<ResponseField name="orders[]._id" type="string">
+  Order unique identifier
+</ResponseField>
+
+<ResponseField name="orders[].orderItems" type="array">
+  Array of ordered items with populated product details (name, images, price)
+</ResponseField>
+
+<ResponseField name="orders[].shippingAddress" type="object">
+  Shipping address details
+</ResponseField>
+
+<ResponseField name="orders[].totalPrice" type="number">
+  Total order price
+</ResponseField>
+
+<ResponseField name="orders[].status" type="string">
+  Current order status
+</ResponseField>
+
+<ResponseField name="orders[].hasReviewed" type="boolean">
+  Whether the user has reviewed this order
+</ResponseField>
+
+<ResponseField name="orders[].createdAt" type="string">
+  ISO 8601 timestamp of order creation
+</ResponseField>
+
+<ResponseField name="orders[].paidAt" type="string">
+  ISO 8601 timestamp when order was paid
+</ResponseField>
+
+<ResponseField name="orders[].deliveredAt" type="string">
+  ISO 8601 timestamp when order was delivered
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X GET https://api.donpalitojr.com/api/orders \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN"
+```
+
+### Example Response
+
+```json
+{
+  "orders": [
+    {
+      "_id": "65f8a1b2c3d4e5f6g7h8i9j0",
+      "orderItems": [
+        {
+          "_id": "65f8a1b2c3d4e5f6g7h8i9j2",
+          "product": {
+            "_id": "65f8a1b2c3d4e5f6g7h8i9j3",
+            "name": "Empanada de Pollo",
+            "images": ["https://res.cloudinary.com/xxx/products/empanada1.jpg"],
+            "price": 3500
+          },
+          "name": "Empanada de Pollo",
+          "price": 3500,
+          "quantity": 2
+        }
+      ],
+      "shippingAddress": {
+        "fullName": "Juan Pérez",
+        "streetAddress": "Calle 123 #45-67",
+        "city": "Bogotá",
+        "phoneNumber": "+57 300 123 4567"
+      },
+      "totalPrice": 7000,
+      "status": "delivered",
+      "hasReviewed": false,
+      "createdAt": "2024-03-15T10:30:00.000Z",
+      "paidAt": "2024-03-15T11:00:00.000Z",
+      "deliveredAt": "2024-03-16T14:30:00.000Z"
+    }
+  ]
+}
+```
+
+---
+
+## Download Invoice
+
+<api method="GET" endpoint="/api/orders/:orderId/invoice" />
+
+Download a PDF invoice for a paid or delivered order.
+
+### Authentication
+
+Required. User must be authenticated via Clerk and must own the order.
+
+### Path Parameters
+
+<ParamField path="orderId" type="string" required>
+  The order ID to download invoice for
+</ParamField>
+
+### Response
+
+Returns a PDF file as `application/pdf` with filename `factura-FV-YYYY-XXXXXXXX.pdf`.
+
+### Example Request
+
+```bash
+curl -X GET https://api.donpalitojr.com/api/orders/65f8a1b2c3d4e5f6g7h8i9j0/invoice \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  --output invoice.pdf
+```
+
+### Error Responses
+
+<ResponseField name="400 Bad Request">
+  Invoice only available for paid or delivered orders
+</ResponseField>
+
+```json
+{
+  "error": "La factura solo está disponible para pedidos pagados o entregados."
+}
+```
+
+<ResponseField name="403 Forbidden">
+  User is not authorized to access this order
+</ResponseField>
+
+```json
+{
+  "error": "No autorizado."
+}
+```
+
+<ResponseField name="404 Not Found">
+  Order not found
+</ResponseField>
+
+```json
+{
+  "error": "Pedido no encontrado."
+}
+```

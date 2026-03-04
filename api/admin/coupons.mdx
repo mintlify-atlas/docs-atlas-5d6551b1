@@ -1,0 +1,351 @@
+---
+title: 'Coupon Management'
+description: 'Admin endpoints for creating and managing discount coupons'
+---
+
+## Get All Coupons
+
+<api method="GET" endpoint="/api/admin/coupons" />
+
+Retrieve all coupons sorted by creation date (newest first). Requires admin authentication.
+
+### Authentication
+
+Requires Clerk authentication with admin role. Protected by `protectRoute` and `adminOnly` middleware.
+
+### Response
+
+<ResponseField name="coupons" type="array">
+  Array of coupon objects
+  <ResponseField name="coupons[]._id" type="string">
+    MongoDB ObjectId
+  </ResponseField>
+  <ResponseField name="coupons[].code" type="string">
+    Coupon code (uppercase, unique)
+  </ResponseField>
+  <ResponseField name="coupons[].discountType" type="string">
+    Type of discount: "percentage" or "fixed"
+  </ResponseField>
+  <ResponseField name="coupons[].discountValue" type="number">
+    Discount value (1-100 for percentage, any positive number for fixed)
+  </ResponseField>
+  <ResponseField name="coupons[].expiresAt" type="string">
+    ISO 8601 expiration date (null if no expiration)
+  </ResponseField>
+  <ResponseField name="coupons[].isActive" type="boolean">
+    Whether the coupon is active
+  </ResponseField>
+  <ResponseField name="coupons[].usedBy" type="array">
+    Array of user IDs who have used this coupon
+  </ResponseField>
+  <ResponseField name="coupons[].createdAt" type="string">
+    ISO 8601 timestamp
+  </ResponseField>
+  <ResponseField name="coupons[].updatedAt" type="string">
+    ISO 8601 timestamp
+  </ResponseField>
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X GET https://api.example.com/api/admin/coupons \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+{
+  "coupons": [
+    {
+      "_id": "507f1f77bcf86cd799439011",
+      "code": "SUMMER2026",
+      "discountType": "percentage",
+      "discountValue": 20,
+      "expiresAt": "2026-08-31T23:59:59.000Z",
+      "isActive": true,
+      "usedBy": [
+        "507f191e810c19729de860ea"
+      ],
+      "createdAt": "2026-03-01T10:00:00.000Z",
+      "updatedAt": "2026-03-04T12:30:00.000Z"
+    },
+    {
+      "_id": "507f1f77bcf86cd799439012",
+      "code": "FIXED5K",
+      "discountType": "fixed",
+      "discountValue": 5000,
+      "expiresAt": null,
+      "isActive": true,
+      "usedBy": [],
+      "createdAt": "2026-02-15T08:00:00.000Z",
+      "updatedAt": "2026-02-15T08:00:00.000Z"
+    }
+  ]
+}
+```
+</ResponseExample>
+
+---
+
+## Create Coupon
+
+<api method="POST" endpoint="/api/admin/coupons" />
+
+Create a new discount coupon with validation rules.
+
+### Authentication
+
+Requires Clerk authentication with admin role.
+
+### Request
+
+<ParamField body="code" type="string" required>
+  Coupon code. Will be converted to uppercase and trimmed. Must be unique.
+</ParamField>
+
+<ParamField body="discountType" type="string" required>
+  Type of discount:
+  - `percentage` - Percentage discount (1-100)
+  - `fixed` - Fixed amount discount
+</ParamField>
+
+<ParamField body="discountValue" type="number" required>
+  Discount value. Must be:
+  - 1-100 for percentage discounts
+  - Any positive number >= 1 for fixed discounts
+</ParamField>
+
+<ParamField body="expiresAt" type="string">
+  ISO 8601 expiration date. Optional - if not provided, coupon never expires.
+</ParamField>
+
+### Response
+
+<ResponseField name="coupon" type="object">
+  The created coupon object
+</ResponseField>
+
+<RequestExample>
+```bash cURL (Percentage Discount)
+curl -X POST https://api.example.com/api/admin/coupons \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "WELCOME10",
+    "discountType": "percentage",
+    "discountValue": 10,
+    "expiresAt": "2026-12-31T23:59:59.000Z"
+  }'
+```
+
+```bash cURL (Fixed Discount)
+curl -X POST https://api.example.com/api/admin/coupons \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "SAVE5000",
+    "discountType": "fixed",
+    "discountValue": 5000
+  }'
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+{
+  "coupon": {
+    "_id": "507f1f77bcf86cd799439013",
+    "code": "WELCOME10",
+    "discountType": "percentage",
+    "discountValue": 10,
+    "expiresAt": "2026-12-31T23:59:59.000Z",
+    "isActive": true,
+    "usedBy": [],
+    "createdAt": "2026-03-04T15:00:00.000Z",
+    "updatedAt": "2026-03-04T15:00:00.000Z"
+  }
+}
+```
+</ResponseExample>
+
+### Error Responses
+
+<ResponseExample>
+```json Missing Fields
+{
+  "error": "code, discountType y discountValue son requeridos."
+}
+```
+
+```json Invalid Discount Type
+{
+  "error": "discountType debe ser 'percentage' o 'fixed'."
+}
+```
+
+```json Invalid Percentage Value
+{
+  "error": "El porcentaje debe estar entre 1 y 100."
+}
+```
+
+```json Duplicate Code
+{
+  "error": "Ya existe un cupón con ese código."
+}
+```
+</ResponseExample>
+
+---
+
+## Update Coupon
+
+<api method="PATCH" endpoint="/api/admin/coupons/:id" />
+
+Update an existing coupon. All fields are optional.
+
+### Authentication
+
+Requires Clerk authentication with admin role.
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  MongoDB ObjectId of the coupon to update
+</ParamField>
+
+### Request
+
+<ParamField body="code" type="string">
+  Updated coupon code (will be uppercase and trimmed)
+</ParamField>
+
+<ParamField body="discountType" type="string">
+  Updated discount type: "percentage" or "fixed"
+</ParamField>
+
+<ParamField body="discountValue" type="number">
+  Updated discount value (validated based on discount type)
+</ParamField>
+
+<ParamField body="expiresAt" type="string">
+  Updated expiration date (ISO 8601)
+</ParamField>
+
+<ParamField body="isActive" type="boolean">
+  Updated active status
+</ParamField>
+
+### Response
+
+<ResponseField name="coupon" type="object">
+  The updated coupon object
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X PATCH https://api.example.com/api/admin/coupons/507f1f77bcf86cd799439013 \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "isActive": false
+  }'
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+{
+  "coupon": {
+    "_id": "507f1f77bcf86cd799439013",
+    "code": "WELCOME10",
+    "discountType": "percentage",
+    "discountValue": 10,
+    "expiresAt": "2026-12-31T23:59:59.000Z",
+    "isActive": false,
+    "usedBy": [],
+    "createdAt": "2026-03-04T15:00:00.000Z",
+    "updatedAt": "2026-03-04T16:00:00.000Z"
+  }
+}
+```
+</ResponseExample>
+
+### Error Responses
+
+<ResponseExample>
+```json Invalid Percentage
+{
+  "error": "El porcentaje debe estar entre 1 y 100."
+}
+```
+
+```json Coupon Not Found
+{
+  "error": "Cupón no encontrado."
+}
+```
+</ResponseExample>
+
+---
+
+## Delete Coupon
+
+<api method="DELETE" endpoint="/api/admin/coupons/:id" />
+
+Permanently delete a coupon.
+
+### Authentication
+
+Requires Clerk authentication with admin role.
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  MongoDB ObjectId of the coupon to delete
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X DELETE https://api.example.com/api/admin/coupons/507f1f77bcf86cd799439013 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+{
+  "message": "Cupón eliminado correctamente."
+}
+```
+
+```json Coupon Not Found
+{
+  "error": "Cupón no encontrado."
+}
+```
+</ResponseExample>
+
+---
+
+## Coupon Validation
+
+For customer-facing coupon validation, see the public endpoint:
+- `POST /api/coupons/validate` - Validate and calculate discount (requires user authentication)
+
+Validation checks:
+- Coupon exists and is active
+- Not expired (`expiresAt` is null or in the future)
+- User hasn't already used the coupon (tracked in `usedBy` array)
+- If `firstOrderOnly` is set, user must have no completed orders
+
+The discount amount is calculated based on:
+- **Percentage**: `min(round(subtotal * discountValue / 100), subtotal)`
+- **Fixed**: `min(discountValue, subtotal)`

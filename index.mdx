@@ -1,97 +1,173 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Don Palito Jr Documentation"
+description: "Full-stack e-commerce platform with web, mobile, and admin interfaces"
+mode: "custom"
 ---
 
-## Setting up
+<div className="relative overflow-hidden dark:bg-[#020627] bg-white py-20">
+  <div className="absolute inset-0 dark:bg-gradient-to-br dark:from-[#020627] dark:via-[#0a1142] dark:to-[#020627] bg-gradient-to-br from-gray-50 via-white to-gray-50" />
+  <div className="relative max-w-6xl mx-auto px-6">
+    <div className="flex flex-col lg:flex-row items-center gap-12">
+      <div className="flex-1 text-center lg:text-left">
+        <h1 className="text-5xl lg:text-6xl font-bold dark:text-white text-gray-900 mb-6">
+          Welcome to Don Palito Jr
+        </h1>
+        <p className="text-xl dark:text-gray-400 text-gray-600 mb-8 max-w-2xl">
+          Build and manage your e-commerce platform with integrated payments, multi-platform support, and powerful admin tools.
+        </p>
+        <div className="flex flex-wrap gap-4 justify-center lg:justify-start">
+          <a 
+            href="/quickstart" 
+            className="inline-flex items-center px-8 py-3 rounded-lg bg-[#529c3a] hover:bg-[#238636] text-white font-semibold transition-colors"
+          >
+            Get Started
+          </a>
+          <a 
+            href="/api/products" 
+            className="inline-flex items-center px-8 py-3 rounded-lg border dark:border-white/30 dark:bg-white/10 border-gray-300 bg-gray-50 dark:text-white text-gray-900 font-semibold dark:hover:border-[#529c3a] hover:border-gray-400 transition-colors"
+          >
+            API Reference
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
-Get your documentation site up and running in minutes.
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold dark:text-white text-gray-900 mb-4">Quick Start</h2>
+  <p className="text-base dark:text-gray-400 text-gray-600 mb-8">Get your e-commerce platform running in minutes</p>
+  
+  <Steps>
+    <Step title="Clone the repository">
+      Start by cloning the Don Palito Jr repository to your local machine.
+      
+      ```bash
+      git clone https://github.com/DarkerJB/donpalitojrweb.git
+      cd donpalitojrweb
+      ```
+    </Step>
+    
+    <Step title="Install dependencies">
+      Install all required dependencies for the backend, admin panel, and web application.
+      
+      ```bash
+      npm install
+      ```
+      
+      <Note>This command will install dependencies for all three main components: backend, admin, and web.</Note>
+    </Step>
+    
+    <Step title="Configure environment variables">
+      Set up your environment variables for authentication, database, and payment processing.
+      
+      ```bash
+      # Backend .env
+      MONGODB_URI=your_mongodb_connection_string
+      CLERK_PUBLISHABLE_KEY=your_clerk_key
+      STRIPE_SECRET_KEY=your_stripe_key
+      CLOUDINARY_CLOUD_NAME=your_cloudinary_name
+      ```
+      
+      <Tip>See the [Environment Variables](/deployment/environment-variables) page for a complete list of required variables.</Tip>
+    </Step>
+    
+    <Step title="Start the development servers">
+      Launch the backend API and frontend applications.
+      
+      ```bash
+      # Start backend
+      npm run dev --prefix backend
+      
+      # Start admin panel (in another terminal)
+      npm run dev --prefix admin
+      
+      # Start web app (in another terminal)
+      npm run dev --prefix web
+      ```
+      
+      Your applications will be available at:
+      - Backend API: `http://localhost:3000`
+      - Admin Panel: `http://localhost:5173`
+      - Web App: `http://localhost:5174`
+    </Step>
+  </Steps>
+</div>
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold dark:text-white text-gray-900 mb-4">Explore by Platform</h2>
+  <p className="text-base dark:text-gray-400 text-gray-600 mb-8">Don Palito Jr supports multiple platforms for different use cases</p>
+  
+  <CardGroup cols={3}>
+    <Card title="Web Application" icon="globe" href="/frontend/web-app">
+      Customer-facing e-commerce website built with React and Vite
+    </Card>
+    <Card title="Admin Panel" icon="shield" href="/frontend/admin-panel">
+      Manage products, orders, customers, and coupons with a powerful dashboard
+    </Card>
+    <Card title="Mobile App" icon="mobile" href="/frontend/mobile-app">
+      React Native mobile application built with Expo for iOS and Android
+    </Card>
+  </CardGroup>
+</div>
 
-## Make it yours
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold dark:text-white text-gray-900 mb-4">Core Features</h2>
+  <p className="text-base dark:text-gray-400 text-gray-600 mb-8">Everything you need to run a complete e-commerce platform</p>
+  
+  <CardGroup cols={2}>
+    <Card title="Product Management" icon="box" href="/features/products">
+      Create and manage products with images, categories, and inventory tracking
+    </Card>
+    <Card title="Order Processing" icon="receipt" href="/features/orders">
+      Handle orders from checkout to delivery with status tracking
+    </Card>
+    <Card title="Payment Integration" icon="credit-card" href="/features/payments">
+      Accept payments with Stripe integration and webhook handling
+    </Card>
+    <Card title="Shopping Cart" icon="cart-shopping" href="/features/cart">
+      Persistent cart management across sessions and devices
+    </Card>
+    <Card title="Coupon System" icon="ticket" href="/features/coupons">
+      Create and manage discount codes and promotional offers
+    </Card>
+    <Card title="Product Reviews" icon="star" href="/features/reviews">
+      Customer reviews and ratings for products
+    </Card>
+  </CardGroup>
+</div>
 
-Design a docs site that looks great and empowers your users.
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold dark:text-white text-gray-900 mb-4">Backend Technologies</h2>
+  <p className="text-base dark:text-gray-400 text-gray-600 mb-8">Built with modern, reliable technologies</p>
+  
+  <CardGroup cols={2}>
+    <Card title="Express.js Server" icon="server" href="/backend/setup">
+      RESTful API built with Express.js and Node.js
+    </Card>
+    <Card title="MongoDB Database" icon="database" href="/backend/database">
+      NoSQL database with Mongoose ODM for data modeling
+    </Card>
+    <Card title="Clerk Authentication" icon="lock" href="/backend/authentication">
+      Secure user authentication and authorization
+    </Card>
+    <Card title="Cloudinary Storage" icon="cloud" href="/backend/configuration">
+      Image upload and storage with Cloudinary
+    </Card>
+  </CardGroup>
+</div>
 
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
-  </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
-
-## Create beautiful pages
-
-Everything you need to create world-class documentation.
-
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
-
-## Need inspiration?
-
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="dark:bg-[#1a1d27] bg-gray-50 rounded-2xl dark:border-[#27272a] border-gray-200 border p-8 text-center">
+    <h2 className="text-3xl font-bold dark:text-white text-gray-900 mb-4">Ready to get started?</h2>
+    <p className="text-lg dark:text-gray-400 text-gray-600 mb-6 max-w-2xl mx-auto">
+      Follow our comprehensive guide to set up your e-commerce platform and start selling.
+    </p>
+    <a 
+      href="/quickstart" 
+      className="inline-flex items-center px-8 py-3 rounded-lg bg-[#529c3a] hover:bg-[#238636] text-white font-semibold transition-colors"
+    >
+      View Quickstart Guide
+    </a>
+  </div>
+</div>

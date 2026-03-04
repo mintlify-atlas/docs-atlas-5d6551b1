@@ -1,0 +1,297 @@
+---
+title: 'Product Management'
+description: 'Admin endpoints for managing products'
+---
+
+## Create Product
+
+<api method="POST" endpoint="/api/admin/products" />
+
+Create a new product with image upload support. Requires admin authentication.
+
+### Authentication
+
+Requires Clerk authentication with admin role. All admin routes are protected by `protectRoute` and `adminOnly` middleware.
+
+### Request
+
+Content-Type: `multipart/form-data`
+
+<ParamField body="name" type="string" required>
+  Product name
+</ParamField>
+
+<ParamField body="description" type="string" required>
+  Product description
+</ParamField>
+
+<ParamField body="price" type="number" required>
+  Product price (must be >= 0)
+</ParamField>
+
+<ParamField body="stock" type="number" required>
+  Available stock quantity (must be >= 0)
+</ParamField>
+
+<ParamField body="category" type="string" required>
+  Product category
+</ParamField>
+
+<ParamField body="images" type="file[]" required>
+  Product images (1-3 files). Uploaded to Cloudinary in the `products` folder.
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="product" type="object">
+  The created product object
+  <ResponseField name="product._id" type="string">
+    MongoDB ObjectId
+  </ResponseField>
+  <ResponseField name="product.name" type="string">
+    Product name
+  </ResponseField>
+  <ResponseField name="product.description" type="string">
+    Product description
+  </ResponseField>
+  <ResponseField name="product.price" type="number">
+    Product price
+  </ResponseField>
+  <ResponseField name="product.stock" type="number">
+    Available stock
+  </ResponseField>
+  <ResponseField name="product.category" type="string">
+    Product category
+  </ResponseField>
+  <ResponseField name="product.images" type="string[]">
+    Array of Cloudinary image URLs
+  </ResponseField>
+  <ResponseField name="product.averageRating" type="number">
+    Average rating (0-5, default: 0)
+  </ResponseField>
+  <ResponseField name="product.totalReviews" type="number">
+    Total number of reviews (default: 0)
+  </ResponseField>
+  <ResponseField name="product.createdAt" type="string">
+    ISO 8601 timestamp
+  </ResponseField>
+  <ResponseField name="product.updatedAt" type="string">
+    ISO 8601 timestamp
+  </ResponseField>
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.example.com/api/admin/products \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -F "name=Empanada de Carne" \
+  -F "description=Deliciosa empanada rellena de carne" \
+  -F "price=5000" \
+  -F "stock=100" \
+  -F "category=empanadas" \
+  -F "images=@image1.jpg" \
+  -F "images=@image2.jpg"
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+{
+  "message": "Product created successfully",
+  "product": {
+    "_id": "507f1f77bcf86cd799439011",
+    "name": "Empanada de Carne",
+    "description": "Deliciosa empanada rellena de carne",
+    "price": 5000,
+    "stock": 100,
+    "category": "empanadas",
+    "images": [
+      "https://res.cloudinary.com/.../products/abc123.jpg",
+      "https://res.cloudinary.com/.../products/def456.jpg"
+    ],
+    "averageRating": 0,
+    "totalReviews": 0,
+    "createdAt": "2026-03-04T10:30:00.000Z",
+    "updatedAt": "2026-03-04T10:30:00.000Z"
+  }
+}
+```
+</ResponseExample>
+
+---
+
+## Get All Products
+
+<api method="GET" endpoint="/api/admin/products" />
+
+Retrieve all products sorted by creation date (newest first). Requires admin authentication.
+
+### Authentication
+
+Requires Clerk authentication with admin role.
+
+### Response
+
+<ResponseField name="products" type="array">
+  Array of product objects sorted by `createdAt` descending
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X GET https://api.example.com/api/admin/products \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+[
+  {
+    "_id": "507f1f77bcf86cd799439011",
+    "name": "Empanada de Carne",
+    "description": "Deliciosa empanada rellena de carne",
+    "price": 5000,
+    "stock": 100,
+    "category": "empanadas",
+    "images": [
+      "https://res.cloudinary.com/.../products/abc123.jpg"
+    ],
+    "averageRating": 4.5,
+    "totalReviews": 23,
+    "createdAt": "2026-03-04T10:30:00.000Z",
+    "updatedAt": "2026-03-04T10:30:00.000Z"
+  }
+]
+```
+</ResponseExample>
+
+---
+
+## Update Product
+
+<api method="PUT" endpoint="/api/admin/products/:id" />
+
+Update an existing product. All fields are optional. Supports image upload.
+
+### Authentication
+
+Requires Clerk authentication with admin role.
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  MongoDB ObjectId of the product to update
+</ParamField>
+
+### Request
+
+Content-Type: `multipart/form-data`
+
+<ParamField body="name" type="string">
+  Updated product name
+</ParamField>
+
+<ParamField body="description" type="string">
+  Updated product description
+</ParamField>
+
+<ParamField body="price" type="number">
+  Updated product price
+</ParamField>
+
+<ParamField body="stock" type="number">
+  Updated stock quantity
+</ParamField>
+
+<ParamField body="category" type="string">
+  Updated product category
+</ParamField>
+
+<ParamField body="images" type="file[]">
+  New product images (1-3 files). If provided, replaces all existing images.
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="product" type="object">
+  The updated product object
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X PUT https://api.example.com/api/admin/products/507f1f77bcf86cd799439011 \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -F "price=6000" \
+  -F "stock=150"
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+{
+  "message": "Product updated successfully",
+  "product": {
+    "_id": "507f1f77bcf86cd799439011",
+    "name": "Empanada de Carne",
+    "description": "Deliciosa empanada rellena de carne",
+    "price": 6000,
+    "stock": 150,
+    "category": "empanadas",
+    "images": [
+      "https://res.cloudinary.com/.../products/abc123.jpg"
+    ],
+    "averageRating": 4.5,
+    "totalReviews": 23,
+    "createdAt": "2026-03-04T10:30:00.000Z",
+    "updatedAt": "2026-03-04T12:15:00.000Z"
+  }
+}
+```
+</ResponseExample>
+
+---
+
+## Delete Product
+
+<api method="DELETE" endpoint="/api/admin/products/:id" />
+
+Delete a product and remove its images from Cloudinary.
+
+### Authentication
+
+Requires Clerk authentication with admin role.
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  MongoDB ObjectId of the product to delete
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X DELETE https://api.example.com/api/admin/products/507f1f77bcf86cd799439011 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+{
+  "message": "Product deleted successfully"
+}
+```
+</ResponseExample>

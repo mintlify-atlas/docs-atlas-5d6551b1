@@ -1,0 +1,273 @@
+---
+title: 'Order Management'
+description: 'Admin endpoints for managing orders and order status'
+---
+
+## Get All Orders
+
+<api method="GET" endpoint="/api/admin/orders" />
+
+Retrieve all orders with populated user and product information. Orders are sorted by creation date (newest first).
+
+### Authentication
+
+Requires Clerk authentication with admin role. All admin routes are protected by `protectRoute` and `adminOnly` middleware.
+
+### Response
+
+<ResponseField name="orders" type="array">
+  Array of order objects
+  <ResponseField name="orders[]._id" type="string">
+    MongoDB ObjectId
+  </ResponseField>
+  <ResponseField name="orders[].user" type="object">
+    Populated user object with name and email
+  </ResponseField>
+  <ResponseField name="orders[].clerkId" type="string">
+    Clerk user ID
+  </ResponseField>
+  <ResponseField name="orders[].orderItems" type="array">
+    Array of order items with populated product details
+    <ResponseField name="orderItems[].product" type="object">
+      Full product object
+    </ResponseField>
+    <ResponseField name="orderItems[].name" type="string">
+      Product name snapshot
+    </ResponseField>
+    <ResponseField name="orderItems[].price" type="number">
+      Price at time of order
+    </ResponseField>
+    <ResponseField name="orderItems[].quantity" type="number">
+      Quantity ordered
+    </ResponseField>
+  </ResponseField>
+  <ResponseField name="orders[].shippingAddress" type="object">
+    Shipping address details
+    <ResponseField name="shippingAddress.fullName" type="string">
+      Recipient full name
+    </ResponseField>
+    <ResponseField name="shippingAddress.streetAddress" type="string">
+      Street address
+    </ResponseField>
+    <ResponseField name="shippingAddress.city" type="string">
+      City
+    </ResponseField>
+    <ResponseField name="shippingAddress.phoneNumber" type="string">
+      Phone number
+    </ResponseField>
+  </ResponseField>
+  <ResponseField name="orders[].paymentResult" type="object">
+    Payment information
+    <ResponseField name="paymentResult.id" type="string">
+      Payment provider ID (e.g., Stripe payment intent ID)
+    </ResponseField>
+    <ResponseField name="paymentResult.status" type="string">
+      Payment status
+    </ResponseField>
+  </ResponseField>
+  <ResponseField name="orders[].totalPrice" type="number">
+    Total order price
+  </ResponseField>
+  <ResponseField name="orders[].status" type="string">
+    Order status (see status enum below)
+  </ResponseField>
+  <ResponseField name="orders[].paidAt" type="string">
+    ISO 8601 timestamp when order was marked as paid
+  </ResponseField>
+  <ResponseField name="orders[].deliveredAt" type="string">
+    ISO 8601 timestamp when order was delivered
+  </ResponseField>
+  <ResponseField name="orders[].createdAt" type="string">
+    ISO 8601 timestamp
+  </ResponseField>
+  <ResponseField name="orders[].updatedAt" type="string">
+    ISO 8601 timestamp
+  </ResponseField>
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X GET https://api.example.com/api/admin/orders \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+{
+  "orders": [
+    {
+      "_id": "507f1f77bcf86cd799439011",
+      "user": {
+        "_id": "507f191e810c19729de860ea",
+        "name": "Juan Pérez",
+        "email": "juan@example.com"
+      },
+      "clerkId": "user_2abcdefghijklmnop",
+      "orderItems": [
+        {
+          "product": {
+            "_id": "507f1f77bcf86cd799439012",
+            "name": "Empanada de Carne",
+            "price": 5000
+          },
+          "name": "Empanada de Carne",
+          "price": 5000,
+          "quantity": 3
+        }
+      ],
+      "shippingAddress": {
+        "fullName": "Juan Pérez",
+        "streetAddress": "Calle 123 #45-67",
+        "city": "Bogotá",
+        "phoneNumber": "+57 300 1234567"
+      },
+      "paymentResult": {
+        "id": "pi_1234567890abcdef",
+        "status": "succeeded"
+      },
+      "totalPrice": 25000,
+      "status": "in_preparation",
+      "paidAt": "2026-03-04T10:30:00.000Z",
+      "createdAt": "2026-03-04T10:15:00.000Z",
+      "updatedAt": "2026-03-04T11:00:00.000Z"
+    }
+  ]
+}
+```
+</ResponseExample>
+
+---
+
+## Update Order Status
+
+<api method="PATCH" endpoint="/api/admin/orders/:orderId/status" />
+
+Update the status of an order. Triggers automated email notifications and invoice generation based on the new status.
+
+### Authentication
+
+Requires Clerk authentication with admin role.
+
+### Path Parameters
+
+<ParamField path="orderId" type="string" required>
+  MongoDB ObjectId of the order to update
+</ParamField>
+
+### Request
+
+<ParamField body="status" type="string" required>
+  New order status. Must be one of:
+  - `pending` - Order created but not paid
+  - `paid` - Payment received (triggers invoice generation)
+  - `in_preparation` - Order is being prepared
+  - `ready` - Order ready for pickup/delivery
+  - `delivered` - Order delivered to customer
+  - `canceled` - Order canceled
+  - `rejected` - Order rejected
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="order" type="object">
+  The updated order object with populated user and product data
+</ResponseField>
+
+### Automated Actions
+
+When the status changes, the following automated actions occur:
+
+#### Status: `paid`
+- Sets `paidAt` timestamp if not already set
+- Generates PDF invoice using `generateInvoicePDF()`
+- Generates CSV invoice using `generateInvoiceCSV()`
+- Sends invoice emails to customer and admin via `sendInvoiceEmails()`
+- Invoice number format: `FV-{YEAR}-{ORDER_ID_SUFFIX}`
+- Payment method inferred from `paymentResult.id` prefix:
+  - `pi_` = Stripe
+  - `transfer_` = Transferencia
+
+#### Status: `delivered`
+- Sets `deliveredAt` timestamp if not already set
+- Sends status update emails to customer and admin
+
+#### All Other Status Changes
+- Sends status update emails to customer (via `sendOrderUpdatedClientEmail()`) and admin (via `sendOrderUpdatedAdminEmail()`)
+- Respects user's `emailNotifications` preference
+
+<RequestExample>
+```bash cURL
+curl -X PATCH https://api.example.com/api/admin/orders/507f1f77bcf86cd799439011/status \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "in_preparation"
+  }'
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+{
+  "message": "Order status updated successfully",
+  "order": {
+    "_id": "507f1f77bcf86cd799439011",
+    "user": {
+      "_id": "507f191e810c19729de860ea",
+      "name": "Juan Pérez",
+      "email": "juan@example.com",
+      "emailNotifications": true
+    },
+    "clerkId": "user_2abcdefghijklmnop",
+    "orderItems": [
+      {
+        "product": {
+          "_id": "507f1f77bcf86cd799439012",
+          "name": "Empanada de Carne",
+          "price": 5000
+        },
+        "name": "Empanada de Carne",
+        "price": 5000,
+        "quantity": 3
+      }
+    ],
+    "shippingAddress": {
+      "fullName": "Juan Pérez",
+      "streetAddress": "Calle 123 #45-67",
+      "city": "Bogotá",
+      "phoneNumber": "+57 300 1234567"
+    },
+    "paymentResult": {
+      "id": "pi_1234567890abcdef",
+      "status": "succeeded"
+    },
+    "totalPrice": 25000,
+    "status": "in_preparation",
+    "paidAt": "2026-03-04T10:30:00.000Z",
+    "createdAt": "2026-03-04T10:15:00.000Z",
+    "updatedAt": "2026-03-04T11:00:00.000Z"
+  }
+}
+```
+</ResponseExample>
+
+### Error Responses
+
+<ResponseExample>
+```json Invalid Status
+{
+  "message": "Invalid status"
+}
+```
+
+```json Order Not Found
+{
+  "message": "Order not found"
+}
+```
+</ResponseExample>

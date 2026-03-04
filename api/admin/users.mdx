@@ -1,0 +1,233 @@
+---
+title: 'User Management'
+description: 'Admin endpoints for managing customer accounts'
+---
+
+## Get All Users
+
+<api method="GET" endpoint="/api/admin/customers" />
+
+Retrieve all registered users (customers) with their profile information. Users are sorted by registration date (newest first).
+
+### Authentication
+
+Requires Clerk authentication with admin role. All admin routes are protected by `protectRoute` and `adminOnly` middleware.
+
+### Response
+
+<ResponseField name="customers" type="array">
+  Array of customer user objects
+  <ResponseField name="customers[]._id" type="string">
+    MongoDB ObjectId
+  </ResponseField>
+  <ResponseField name="customers[].name" type="string">
+    User's full name
+  </ResponseField>
+  <ResponseField name="customers[].email" type="string">
+    User's email address (unique)
+  </ResponseField>
+  <ResponseField name="customers[].imageUrl" type="string">
+    User's profile image URL
+  </ResponseField>
+  <ResponseField name="customers[].addresses" type="array">
+    Array of saved addresses
+    <ResponseField name="addresses[].label" type="string">
+      Address label (e.g., "Home", "Work")
+    </ResponseField>
+    <ResponseField name="addresses[].fullName" type="string">
+      Recipient name for this address
+    </ResponseField>
+    <ResponseField name="addresses[].streetAddress" type="string">
+      Street address
+    </ResponseField>
+    <ResponseField name="addresses[].city" type="string">
+      City
+    </ResponseField>
+    <ResponseField name="addresses[].phoneNumber" type="string">
+      Contact phone number
+    </ResponseField>
+    <ResponseField name="addresses[].isDefault" type="boolean">
+      Whether this is the default address
+    </ResponseField>
+  </ResponseField>
+  <ResponseField name="customers[].isActive" type="boolean">
+    Whether the user account is active (default: true)
+  </ResponseField>
+  <ResponseField name="customers[].documentType" type="string">
+    Document type: "cedula_ciudadania", "cedula_extranjeria", or "pasaporte"
+  </ResponseField>
+  <ResponseField name="customers[].documentNumber" type="string">
+    Document number
+  </ResponseField>
+  <ResponseField name="customers[].gender" type="string">
+    Gender: "masculino", "femenino", or "otro"
+  </ResponseField>
+  <ResponseField name="customers[].dateOfBirth" type="string">
+    ISO 8601 date of birth
+  </ResponseField>
+  <ResponseField name="customers[].createdAt" type="string">
+    ISO 8601 timestamp of registration
+  </ResponseField>
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X GET https://api.example.com/api/admin/customers \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response
+{
+  "customers": [
+    {
+      "_id": "507f191e810c19729de860ea",
+      "name": "Juan Pérez",
+      "email": "juan@example.com",
+      "imageUrl": "https://img.clerk.com/abc123",
+      "addresses": [
+        {
+          "_id": "507f1f77bcf86cd799439013",
+          "label": "Casa",
+          "fullName": "Juan Pérez",
+          "streetAddress": "Calle 123 #45-67",
+          "city": "Bogotá",
+          "phoneNumber": "+57 300 1234567",
+          "isDefault": true
+        }
+      ],
+      "isActive": true,
+      "documentType": "cedula_ciudadania",
+      "documentNumber": "1234567890",
+      "gender": "masculino",
+      "dateOfBirth": "1990-05-15T00:00:00.000Z",
+      "createdAt": "2026-01-15T08:30:00.000Z"
+    }
+  ]
+}
+```
+</ResponseExample>
+
+---
+
+## Update Customer Status
+
+<api method="PATCH" endpoint="/api/admin/customers/:customerId/status" />
+
+Activate or deactivate a customer account. Inactive accounts may have restricted access.
+
+### Authentication
+
+Requires Clerk authentication with admin role.
+
+### Path Parameters
+
+<ParamField path="customerId" type="string" required>
+  MongoDB ObjectId of the customer to update
+</ParamField>
+
+### Request
+
+<ParamField body="isActive" type="boolean" required>
+  New account status. `true` to activate, `false` to deactivate.
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message indicating activation or deactivation
+</ResponseField>
+
+<ResponseField name="customer" type="object">
+  Updated customer object with limited fields
+  <ResponseField name="customer._id" type="string">
+    Customer ID
+  </ResponseField>
+  <ResponseField name="customer.name" type="string">
+    Customer name
+  </ResponseField>
+  <ResponseField name="customer.email" type="string">
+    Customer email
+  </ResponseField>
+  <ResponseField name="customer.isActive" type="boolean">
+    Updated active status
+  </ResponseField>
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X PATCH https://api.example.com/api/admin/customers/507f191e810c19729de860ea/status \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "isActive": false
+  }'
+```
+</RequestExample>
+
+<ResponseExample>
+```json Success Response (Deactivated)
+{
+  "message": "Customer deactivated successfully",
+  "customer": {
+    "_id": "507f191e810c19729de860ea",
+    "name": "Juan Pérez",
+    "email": "juan@example.com",
+    "isActive": false
+  }
+}
+```
+
+```json Success Response (Activated)
+{
+  "message": "Customer activated successfully",
+  "customer": {
+    "_id": "507f191e810c19729de860ea",
+    "name": "Juan Pérez",
+    "email": "juan@example.com",
+    "isActive": true
+  }
+}
+```
+</ResponseExample>
+
+### Error Responses
+
+<ResponseExample>
+```json Invalid Request
+{
+  "message": "isActive must be a boolean"
+}
+```
+
+```json Customer Not Found
+{
+  "message": "Customer not found"
+}
+```
+</ResponseExample>
+
+---
+
+## User Model Fields
+
+For reference, the complete User model includes the following fields:
+
+- `email` (string, required, unique) - User's email address
+- `name` (string, required) - User's full name
+- `imageUrl` (string) - Profile image URL from Clerk
+- `clerkId` (string, required, unique) - Clerk authentication ID
+- `stripeCustomerId` (string) - Stripe customer ID for payments
+- `addresses` (array) - Saved shipping addresses
+- `wishlist` (array of ObjectIds) - References to Product documents
+- `isActive` (boolean, default: true) - Account active status
+- `emailNotifications` (boolean, default: true) - Email notification preference
+- `marketingEmails` (boolean, default: false) - Marketing email opt-in
+- `documentType` (string) - Document type enum
+- `documentNumber` (string) - Government ID number
+- `gender` (string) - Gender enum
+- `dateOfBirth` (Date) - Date of birth
+- `phone` (string) - Phone number
+- `createdAt` (Date) - Auto-generated timestamp
+- `updatedAt` (Date) - Auto-generated timestamp

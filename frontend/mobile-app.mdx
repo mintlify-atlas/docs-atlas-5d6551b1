@@ -1,0 +1,515 @@
+---
+title: 'Mobile App'
+description: 'React Native mobile app built with Expo, NativeWind, and React Navigation'
+---
+
+## Overview
+
+The Don Palito Jr mobile app provides a native mobile experience for iOS and Android users. Built with Expo and React Native, it offers seamless product browsing, cart management, and checkout functionality with a mobile-optimized UI.
+
+## Technology Stack
+
+<CardGroup cols={2}>
+  <Card title="React Native 0.81" icon="mobile" color="#61DAFB">
+    Cross-platform mobile framework
+  </Card>
+  <Card title="Expo 54" icon="circle" color="#000020">
+    Development platform and toolchain
+  </Card>
+  <Card title="NativeWind 4.2" icon="wind" color="#06B6D4">
+    Tailwind CSS for React Native
+  </Card>
+  <Card title="Expo Router 6" icon="route" color="#000020">
+    File-based routing for React Native
+  </Card>
+</CardGroup>
+
+### Key Dependencies
+
+- **Authentication**: Clerk Expo (`@clerk/clerk-expo`)
+- **State Management**: Zustand
+- **Data Fetching**: TanStack Query (`@tanstack/react-query`)
+- **HTTP Client**: Axios
+- **Navigation**: Expo Router + React Navigation
+- **Payments**: Stripe React Native
+- **Icons**: Expo Vector Icons (Ionicons)
+- **Monitoring**: Sentry React Native
+
+## Setup and Development
+
+<Steps>
+  <Step title="Install Dependencies">
+    ```bash
+    cd source/mobile
+    npm install
+    ```
+  </Step>
+
+  <Step title="Configure Environment">
+    Create a `.env` file:
+    ```bash
+    EXPO_PUBLIC_API_URL=http://localhost:3000/api
+    EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=your_clerk_key
+    EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=your_stripe_key
+    ```
+    
+    <Note>
+      Expo requires environment variables to be prefixed with `EXPO_PUBLIC_` to be accessible in the app.
+    </Note>
+  </Step>
+
+  <Step title="Start Development Server">
+    ```bash
+    npm start
+    # or
+    npx expo start
+    ```
+    This opens the Expo development server with a QR code.
+  </Step>
+
+  <Step title="Run on Device or Emulator">
+    <CodeGroup>
+    ```bash iOS Simulator
+    npm run ios
+    # or
+    npx expo run:ios
+    ```
+    
+    ```bash Android Emulator
+    npm run android
+    # or
+    npx expo run:android
+    ```
+    
+    ```bash Physical Device
+    # Scan QR code with:
+    # - Expo Go app (iOS/Android)
+    # - Camera app (iOS only)
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+## Project Structure
+
+The mobile app uses Expo Router's file-based routing system:
+
+```
+app/
+├── _layout.tsx              # Root layout with providers
+├── sso-callback.tsx         # OAuth callback handler
+├── (auth)/
+│   ├── _layout.tsx          # Auth stack layout
+│   └── index.tsx            # Login screen
+├── (tabs)/
+│   ├── _layout.tsx          # Tab navigator
+│   ├── index.tsx            # Home/Shop screen
+│   ├── cart.tsx             # Shopping cart
+│   └── profile.tsx          # User profile
+├── (profile)/
+│   ├── wishlist.tsx         # Wishlist screen
+│   ├── orders.tsx           # Order history
+│   ├── addresses.tsx        # Saved addresses
+│   └── privacy-security.tsx # Settings
+├── product/
+│   └── [id].tsx             # Product detail
+components/
+├── SafeScreen.tsx           # Safe area wrapper
+├── ProductsGrid.tsx         # Product grid component
+└── ...
+hooks/
+├── useProducts.ts           # Product data hook
+└── ...
+```
+
+<Note>
+  Expo Router uses file system conventions for routing. Routes in `(tabs)` create a tab navigator, while `(auth)` creates a stack navigator.
+</Note>
+
+## Root Layout Configuration
+
+The root layout sets up all providers and global configurations:
+
+```tsx
+// app/_layout.tsx
+import { Stack } from "expo-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ClerkProvider } from "@clerk/clerk-expo";
+import { tokenCache } from "@clerk/clerk-expo/token-cache";
+import * as Sentry from "@sentry/react-native";
+import { StripeProvider } from "@stripe/stripe-react-native";
+
+Sentry.init({
+  dsn: 'your_sentry_dsn',
+  sendDefaultPii: true,
+  enableLogs: true,
+  replaysSessionSampleRate: 0.1,
+  replaysOnErrorSampleRate: 1,
+  integrations: [Sentry.mobileReplayIntegration()],
+});
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 5 * 60,      // 5 minutes
+      gcTime: 10 * 60 * 1000,        // 10 minutes
+      retry: 1,
+      refetchOnWindowFocus: false,
+      networkMode: 'online',
+    },
+  },
+});
+
+export default Sentry.wrap(function RootLayout() { 
+  return (
+    <ClerkProvider tokenCache={tokenCache}>
+      <QueryClientProvider client={queryClient}>
+        <StripeProvider publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY!}>
+          <Stack screenOptions={{ headerShown: false }} />
+        </StripeProvider>
+      </QueryClientProvider>
+    </ClerkProvider>
+  )
+});
+```
+
+## Tab Navigation
+
+The app uses a custom tab bar with brand colors:
+
+```tsx
+// app/(tabs)/_layout.tsx
+import { Redirect, Tabs } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { useAuth } from "@clerk/clerk-expo";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+const TabsLayout = () => {
+  const { isSignedIn, isLoaded } = useAuth();
+  const insets = useSafeAreaInsets();
+  
+  if (!isLoaded) return null;
+  if (!isSignedIn) return <Redirect href={"/(auth)"} />;
+  
+  return (
+    <Tabs
+      screenOptions={{
+        tabBarActiveTintColor: "#5B3A29",      // brand-secondary
+        tabBarInactiveTintColor: "#FFFFFF",
+        tabBarStyle: {
+          backgroundColor: "#9A8A80",
+          borderTopWidth: 0,
+          height: 56 + insets.bottom,
+          paddingBottom: insets.bottom,
+        },
+        headerShown: false,
+      }}
+    >
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: "Inicio",
+          tabBarIcon: ({ color, size }) => 
+            <Ionicons name="home" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="cart"
+        options={{
+          title: "Carrito",
+          tabBarIcon: ({ color, size }) => 
+            <Ionicons name="cart" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: "Perfil",
+          tabBarIcon: ({ color, size }) => 
+            <Ionicons name="person" size={size} color={color} />,
+        }}
+      />
+    </Tabs>
+  );
+};
+```
+
+## Styling with NativeWind
+
+NativeWind brings Tailwind CSS to React Native with className syntax:
+
+```tsx
+import { View, Text, TouchableOpacity } from 'react-native';
+
+export default function ProductCard({ product }) {
+  return (
+    <TouchableOpacity 
+      className="bg-ui-surface rounded-2xl p-4 shadow-sm"
+    >
+      <View className="w-full h-40 bg-ui-background rounded-xl mb-3">
+        <Image 
+          source={{ uri: product.images[0] }}
+          className="w-full h-full rounded-xl"
+          resizeMode="cover"
+        />
+      </View>
+      <Text className="text-text-primary font-bold text-base">
+        {product.name}
+      </Text>
+      <Text className="text-brand-primary font-bold text-lg mt-1">
+        ${product.price} COP
+      </Text>
+    </TouchableOpacity>
+  );
+}
+```
+
+### Custom Theme Colors
+
+The mobile app shares the same brand colors as the web app:
+
+```javascript
+// tailwind.config.js
+module.exports = {
+  content: ["./app/**/*.{js,jsx,ts,tsx}", "./components/**/*.{js,jsx,ts,tsx}"],
+  presets: [require("nativewind/preset")],
+  theme: {
+    extend: {
+      colors: {
+        brand: {
+          primary: "#B06A4A",
+          secondary: "#5B3A29",
+          accent: "#C34928",
+        },
+        ui: {
+          background: "#F3E6D4",
+          surface: "#FFFFFF",
+          border: "#999999",
+        },
+        text: {
+          primary: "#333333",
+          secondary: "#666666",
+          muted: "#999999",
+          inverse: "#FFFFFF",
+        },
+      },
+    },
+  },
+}
+```
+
+## Key Features
+
+### Home/Shop Screen
+
+The main shop screen includes category filtering and search:
+
+```tsx
+const CATEGORIES = [
+  { name: "All", icon: "grid" },
+  { name: "Palitos Premium", image: require("@/assets/images/mozzarella_coctelero.png") },
+  { name: "Palitos Cocteleros", image: require("@/assets/images/guayaba_coctelero.png") },
+  { name: "Dulces", image: require("@/assets/images/oblea.png") },
+  { name: "Especiales", image: require("@/assets/images/especiales.png") },
+  { name: "Nuevos", image: require("@/assets/images/panocha.png") },
+];
+
+const ShopScreen = () => {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("All");
+  const { data: products, isLoading } = useProducts();
+  
+  const filteredProducts = useMemo(() => {
+    let filtered = products || [];
+    
+    if (selectedCategory !== "All") {
+      filtered = filtered.filter((p) => p.category === selectedCategory);
+    }
+    
+    if (searchQuery.trim()) {
+      filtered = filtered.filter((p) =>
+        p.name.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    
+    return filtered;
+  }, [products, selectedCategory, searchQuery]);
+  
+  return (
+    <SafeScreen>
+      <ScrollView>
+        {/* Search bar */}
+        <TextInput
+          placeholder="Buscar productos"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        
+        {/* Category filters */}
+        <ScrollView horizontal>
+          {CATEGORIES.map((category) => (
+            <CategoryButton
+              key={category.name}
+              category={category}
+              isSelected={selectedCategory === category.name}
+              onPress={() => setSelectedCategory(category.name)}
+            />
+          ))}
+        </ScrollView>
+        
+        {/* Products grid */}
+        <ProductsGrid products={filteredProducts} isLoading={isLoading} />
+      </ScrollView>
+    </SafeScreen>
+  );
+};
+```
+
+### Expo Configuration
+
+The app is configured for modern Expo features:
+
+```json
+{
+  "expo": {
+    "name": "mobile",
+    "slug": "mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "mobile",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/images/android-icon-foreground.png"
+      },
+      "package": "com.anonymous.mobile"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-splash-screen",
+      "@sentry/react-native/expo"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}
+```
+
+## Available Scripts
+
+<CodeGroup>
+```bash Start Dev Server
+npm start
+# or
+npx expo start
+```
+
+```bash iOS
+npm run ios
+```
+
+```bash Android
+npm run android
+```
+
+```bash Web Preview
+npm run web
+```
+
+```bash Lint
+npm run lint
+```
+</CodeGroup>
+
+## Mobile-Specific Considerations
+
+<Tip>
+  ### Performance Optimization
+  - Use `FlatList` for long lists instead of `ScrollView` with `.map()`
+  - Implement `useMemo` and `useCallback` for expensive computations
+  - Optimize images with Expo Image component
+  - Use React Query for automatic caching and background refetching
+</Tip>
+
+<Tip>
+  ### Safe Areas
+  - Always wrap screens with `SafeAreaView` or custom `SafeScreen` component
+  - Use `useSafeAreaInsets()` for dynamic padding on notched devices
+  - Test on multiple device sizes (iPhone SE, iPhone 14 Pro, iPad)
+</Tip>
+
+<Tip>
+  ### Native Features
+  - Haptic feedback on button presses (`expo-haptics`)
+  - Blur effects for modals (`expo-blur`)
+  - Secure token storage (`expo-secure-store`)
+  - Network status detection (`@react-native-community/netinfo`)
+</Tip>
+
+## Testing on Physical Devices
+
+<Steps>
+  <Step title="Install Expo Go">
+    Download Expo Go from the App Store (iOS) or Play Store (Android)
+  </Step>
+  
+  <Step title="Connect to Same Network">
+    Ensure your development machine and mobile device are on the same Wi-Fi network
+  </Step>
+  
+  <Step title="Scan QR Code">
+    Run `npx expo start` and scan the QR code with:
+    - Expo Go app (Android)
+    - Camera app (iOS)
+  </Step>
+  
+  <Step title="Hot Reload">
+    Changes to code automatically reload on the device
+  </Step>
+</Steps>
+
+## Building for Production
+
+<CodeGroup>
+```bash EAS Build (iOS)
+eas build --platform ios
+```
+
+```bash EAS Build (Android)
+eas build --platform android
+```
+
+```bash Local Build
+npx expo prebuild
+npx expo run:ios --configuration Release
+npx expo run:android --variant release
+```
+</CodeGroup>
+
+<Note>
+  For production builds, use [EAS Build](https://docs.expo.dev/build/introduction/) which provides cloud-based builds for both platforms.
+</Note>
+
+## Best Practices
+
+<Warning>
+  - Never use `px` units - always use responsive sizing
+  - Test gesture interactions on real devices, not just simulators
+  - Handle network errors gracefully (airplane mode, slow connections)
+  - Implement proper loading states for async operations
+  - Use TypeScript for better type safety
+</Warning>
+
+<Tip>
+  - Leverage Expo's managed workflow for easier updates
+  - Use Expo Router for type-safe navigation
+  - Keep bundle size small by lazy-loading heavy components
+  - Monitor performance with React Native DevTools
+</Tip>

@@ -1,0 +1,291 @@
+---
+title: 'Shopping Cart'
+description: 'Persistent shopping cart with real-time inventory validation and seamless checkout integration'
+---
+
+## Overview
+
+Don Palito Jr provides a persistent shopping cart that maintains customer selections across sessions. The cart validates inventory in real-time and seamlessly integrates with the checkout flow.
+
+## Cart Schema
+
+The cart is stored in MongoDB and linked to users via their Clerk ID:
+
+```javascript
+const cartSchema = new mongoose.Schema({
+    user: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true
+    },
+    clerkId: {
+        type: String,
+        required: true,
+        unique: true
+    },
+    items: [cartItemSchema]
+},
+{
+    timestamps: true
+});
+```
+
+### Cart Item Schema
+
+```javascript
+const cartItemSchema = new mongoose.Schema({
+    product: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Product",
+        required: true
+    },
+    quantity: {
+        type: Number,
+        required: true,
+        min: 1,
+        default: 1
+    }
+});
+```
+
+<Note>
+  Each user has exactly one cart, identified by their unique `clerkId`. This ensures cart persistence across sessions and devices.
+</Note>
+
+## Cart Features
+
+<CardGroup cols={2}>
+  <Card title="Persistent Storage" icon="database">
+    Cart items are stored in the database and persist across user sessions.
+  </Card>
+  
+  <Card title="Real-time Validation" icon="check-circle">
+    Stock availability is validated every time items are added or updated.
+  </Card>
+  
+  <Card title="Auto-create" icon="wand-magic-sparkles">
+    Carts are automatically created when users add their first item.
+  </Card>
+  
+  <Card title="Product Population" icon="box-open">
+    Cart items are populated with full product details for display.
+  </Card>
+</CardGroup>
+
+## Retrieving the Cart
+
+The cart is automatically created if it doesn't exist:
+
+```javascript
+const getPopulatedCart = async (clerkId) => {
+    return await Cart.findOne({ clerkId }).populate("items.product");
+};
+
+export async function getCart(req, res) {
+    let cart = await getPopulatedCart(req.user.clerkId);
+
+    if (!cart) {
+        const user = req.user;
+
+        cart = await Cart.create({
+            user: user._id,
+            clerkId: user.clerkId,
+            items: [],
+        });
+    }
+    return res.status(200).json({ cart });
+}
+```
+
+<Tip>
+  The `getPopulatedCart` helper function automatically populates product details, so the frontend receives complete product information (name, price, images) without making additional requests.
+</Tip>
+
+## Adding Items to Cart
+
+When adding items, the system validates stock and either increments quantity or adds a new item:
+
+```javascript
+export async function addToCart(req, res) {
+    const { productId, quantity = 1 } = req.body;
+
+    // validate product exists and has stock
+    const product = await Product.findById(productId);
+    if (!product) {
+        return res.status(404).json({ error: "Product not found" });
+    }
+
+    if (product.stock < quantity) {
+        return res.status(400).json({ error: "Insufficient stock" });
+    }
+
+    let cart = await Cart.findOne({ clerkId: req.user.clerkId });
+
+    if (!cart) {
+        cart = await Cart.create({
+            user: req.user._id,
+            clerkId: req.user.clerkId,
+            items: [],
+        });
+    }
+
+    // check if item already in the cart
+    const existingItem = cart.items.find((item) => item.product.toString() === productId);
+    if (existingItem) {
+        // increment quantity by 1
+        const newQuantity = existingItem.quantity + quantity;
+        if (product.stock < newQuantity) {
+            return res.status(400).json({ error: "Insufficient stock" });
+        }
+        existingItem.quantity = newQuantity;
+    } else {
+        // add new item
+        cart.items.push({ product: productId, quantity });
+    }
+
+    await cart.save();
+
+    const updatedCart = await getPopulatedCart(req.user.clerkId);
+
+    return res.status(200).json({ cart: updatedCart });
+}
+```
+
+<Accordion title="Add to Cart Logic">
+  1. Validate product exists and has sufficient stock
+  2. Get or create user's cart
+  3. Check if product already exists in cart
+  4. If exists: increment quantity (with stock validation)
+  5. If new: add as new cart item
+  6. Save cart and return populated version
+</Accordion>
+
+## Updating Cart Items
+
+Customers can update the quantity of items already in their cart:
+
+```javascript
+export async function updateCartItem(req, res) {
+    const { productId } = req.params;
+    const { quantity } = req.body;
+
+    if (quantity < 1) {
+        return res.status(400).json({ error: "Quantity must be at least 1" });
+    }
+
+    const cart = await Cart.findOne({ clerkId: req.user.clerkId });
+    if (!cart) {
+        return res.status(404).json({ error: "Cart not found" });
+    }
+
+    const itemIndex = cart.items.findIndex((item) => item.product.toString() === productId);
+    if (itemIndex === -1) {
+        return res.status(404).json({ error: "Item not found in cart" });
+    }
+
+    // check if product exists & validate stock
+    const product = await Product.findById(productId);
+    if (!product) {
+        return res.status(404).json({ error: "Product not found" });
+    }
+
+    if (product.stock < quantity) {
+        return res.status(400).json({ error: "Insufficient stock" });
+    }
+
+    cart.items[itemIndex].quantity = quantity;
+    await cart.save();
+
+    const updatedCart = await getPopulatedCart(req.user.clerkId);
+
+    return res.status(200).json({ cart: updatedCart });
+}
+```
+
+<Note>
+  Every quantity update validates current stock availability. This prevents customers from checking out with more items than are available.
+</Note>
+
+## Removing Items from Cart
+
+Individual items can be removed from the cart:
+
+```javascript
+export async function removeFromCart(req, res) {
+    const { productId } = req.params;
+
+    const cart = await Cart.findOne({ clerkId: req.user.clerkId });
+    if (!cart) {
+        return res.status(404).json({ error: "Cart not found" });
+    }
+
+    cart.items = cart.items.filter((item) => item.product.toString() !== productId);
+    await cart.save();
+
+    const updatedCart = await getPopulatedCart(req.user.clerkId);
+
+    return res.status(200).json({ cart: updatedCart });
+}
+```
+
+## Clearing the Cart
+
+The entire cart can be cleared in one operation:
+
+```javascript
+export const clearCart = async (req, res) => {
+    const cart = await Cart.findOne({ clerkId: req.user.clerkId });
+    if (!cart) {
+        return res.status(404).json({ error: "Cart not found" });
+    }
+
+    cart.items = [];
+    await cart.save();
+
+    const updatedCart = await getPopulatedCart(req.user.clerkId);
+
+    return res.status(200).json({ cart: updatedCart });
+}
+```
+
+<Tip>
+  The cart is typically cleared after successful order creation, but customers can also manually clear their cart if they change their mind.
+</Tip>
+
+## Cart Persistence
+
+The cart provides several persistence benefits:
+
+1. **Cross-Session**: Cart items persist even after the user logs out and back in
+2. **Cross-Device**: Since carts are linked to Clerk ID, users see the same cart across devices
+3. **Recovery**: If checkout fails, items remain in the cart for retry
+
+## Checkout Integration
+
+During checkout, the cart items are:
+
+1. **Validated**: Stock is checked again to prevent overselling
+2. **Priced**: Current product prices are fetched from the database (not client-provided)
+3. **Processed**: Order is created with payment intent
+4. **Cleared**: Cart is emptied after successful order creation
+
+<Accordion title="Why Re-validate at Checkout?">
+  Stock levels can change between when a customer adds items to their cart and when they check out. Re-validation ensures:
+  - No overselling occurs
+  - Customers are notified of stock issues before payment
+  - Prices reflect current values (protection against price tampering)
+</Accordion>
+
+<Note>
+  Cart items store only the product ID and quantity. Full product details (price, name, images) are always fetched fresh from the database to prevent price manipulation.
+</Note>
+
+<Accordion title="Source Code Reference">
+  - Cart Model: `backend/src/models/cart.model.js:1-36`
+  - Cart Controller: `backend/src/controllers/cart.controller.js:1-158`
+  - Get Cart: Lines 8-27
+  - Add to Cart: Lines 29-77
+  - Update Item: Lines 79-118
+  - Remove Item: Lines 120-139
+  - Clear Cart: Lines 141-158
+</Accordion>

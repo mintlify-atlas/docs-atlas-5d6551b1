@@ -1,0 +1,299 @@
+---
+title: 'Cart'
+description: 'Shopping cart management endpoints for adding, updating, and removing items'
+---
+
+<Note>
+  All cart endpoints require authentication. Include a valid authentication token in your request headers.
+</Note>
+
+## Get Cart
+
+<api method="GET" endpoint="/api/cart" />
+
+Retrieve the current user's shopping cart. Creates an empty cart if one doesn't exist.
+
+### Authentication
+
+Required. User must be authenticated via Clerk.
+
+### Response
+
+<ResponseField name="cart" type="object" required>
+  The user's cart object
+</ResponseField>
+
+<ResponseField name="cart._id" type="string">
+  Cart identifier
+</ResponseField>
+
+<ResponseField name="cart.user" type="string">
+  User ID reference
+</ResponseField>
+
+<ResponseField name="cart.clerkId" type="string">
+  Clerk user ID
+</ResponseField>
+
+<ResponseField name="cart.items" type="array">
+  Array of cart items with populated product details
+</ResponseField>
+
+<ResponseField name="cart.items[].product" type="object">
+  Full product object with name, price, images, etc.
+</ResponseField>
+
+<ResponseField name="cart.items[].quantity" type="number">
+  Quantity of this product in cart (minimum 1)
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X GET https://api.donpalitojr.com/api/cart \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN"
+```
+
+### Example Response
+
+```json
+{
+  "cart": {
+    "_id": "65f8a1b2c3d4e5f6g7h8i9j0",
+    "user": "65f8a1b2c3d4e5f6g7h8i9j1",
+    "clerkId": "user_2abc123def456",
+    "items": [
+      {
+        "_id": "65f8a1b2c3d4e5f6g7h8i9j2",
+        "product": {
+          "_id": "65f8a1b2c3d4e5f6g7h8i9j3",
+          "name": "Empanada de Pollo",
+          "price": 3500,
+          "images": ["https://res.cloudinary.com/xxx/products/empanada1.jpg"],
+          "stock": 50
+        },
+        "quantity": 2
+      }
+    ],
+    "createdAt": "2024-03-15T10:30:00.000Z",
+    "updatedAt": "2024-03-15T10:30:00.000Z"
+  }
+}
+```
+
+---
+
+## Add Item to Cart
+
+<api method="POST" endpoint="/api/cart" />
+
+Add a product to the cart or increment quantity if already present.
+
+### Authentication
+
+Required. User must be authenticated via Clerk.
+
+### Request Body
+
+<ParamField body="productId" type="string" required>
+  The product ID to add to cart
+</ParamField>
+
+<ParamField body="quantity" type="number" default="1">
+  Quantity to add (defaults to 1)
+</ParamField>
+
+### Response
+
+Returns the updated cart with populated product details.
+
+<ResponseField name="cart" type="object">
+  Updated cart object with items array
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X POST https://api.donpalitojr.com/api/cart \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "productId": "65f8a1b2c3d4e5f6g7h8i9j3",
+    "quantity": 2
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "cart": {
+    "_id": "65f8a1b2c3d4e5f6g7h8i9j0",
+    "items": [
+      {
+        "product": {
+          "_id": "65f8a1b2c3d4e5f6g7h8i9j3",
+          "name": "Empanada de Pollo",
+          "price": 3500
+        },
+        "quantity": 2
+      }
+    ]
+  }
+}
+```
+
+### Error Responses
+
+<ResponseField name="400 Bad Request">
+  Insufficient stock available
+</ResponseField>
+
+```json
+{
+  "error": "Insufficient stock"
+}
+```
+
+<ResponseField name="404 Not Found">
+  Product does not exist
+</ResponseField>
+
+```json
+{
+  "error": "Product not found"
+}
+```
+
+---
+
+## Update Cart Item Quantity
+
+<api method="PUT" endpoint="/api/cart/:productId" />
+
+Update the quantity of a specific product in the cart.
+
+### Authentication
+
+Required. User must be authenticated via Clerk.
+
+### Path Parameters
+
+<ParamField path="productId" type="string" required>
+  The product ID to update
+</ParamField>
+
+### Request Body
+
+<ParamField body="quantity" type="number" required>
+  New quantity (must be at least 1)
+</ParamField>
+
+### Response
+
+Returns the updated cart with populated product details.
+
+### Example Request
+
+```bash
+curl -X PUT https://api.donpalitojr.com/api/cart/65f8a1b2c3d4e5f6g7h8i9j3 \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"quantity": 3}'
+```
+
+### Error Responses
+
+<ResponseField name="400 Bad Request">
+  Quantity must be at least 1 or insufficient stock
+</ResponseField>
+
+```json
+{
+  "error": "Quantity must be at least 1"
+}
+```
+
+<ResponseField name="404 Not Found">
+  Cart or item not found
+</ResponseField>
+
+```json
+{
+  "error": "Item not found in cart"
+}
+```
+
+---
+
+## Remove Item from Cart
+
+<api method="DELETE" endpoint="/api/cart/:productId" />
+
+Remove a specific product from the cart.
+
+### Authentication
+
+Required. User must be authenticated via Clerk.
+
+### Path Parameters
+
+<ParamField path="productId" type="string" required>
+  The product ID to remove from cart
+</ParamField>
+
+### Response
+
+Returns the updated cart without the removed item.
+
+### Example Request
+
+```bash
+curl -X DELETE https://api.donpalitojr.com/api/cart/65f8a1b2c3d4e5f6g7h8i9j3 \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN"
+```
+
+### Example Response
+
+```json
+{
+  "cart": {
+    "_id": "65f8a1b2c3d4e5f6g7h8i9j0",
+    "items": []
+  }
+}
+```
+
+---
+
+## Clear Cart
+
+<api method="DELETE" endpoint="/api/cart" />
+
+Remove all items from the cart.
+
+### Authentication
+
+Required. User must be authenticated via Clerk.
+
+### Response
+
+Returns the cart with an empty items array.
+
+### Example Request
+
+```bash
+curl -X DELETE https://api.donpalitojr.com/api/cart \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN"
+```
+
+### Example Response
+
+```json
+{
+  "cart": {
+    "_id": "65f8a1b2c3d4e5f6g7h8i9j0",
+    "items": []
+  }
+}
+```

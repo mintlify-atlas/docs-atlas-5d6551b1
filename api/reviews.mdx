@@ -1,0 +1,284 @@
+---
+title: 'Reviews'
+description: 'Product review endpoints for submitting and managing customer ratings'
+---
+
+<Note>
+  Review endpoints require authentication. Customers can only review products from their delivered orders.
+</Note>
+
+## Create Review
+
+<api method="POST" endpoint="/api/reviews" />
+
+Create or update a product review for a delivered order. Reviews automatically update the product's average rating and total review count.
+
+### Authentication
+
+Required. User must be authenticated via Clerk.
+
+### Request Body
+
+<ParamField body="productId" type="string" required>
+  The product ID to review
+</ParamField>
+
+<ParamField body="orderId" type="string" required>
+  The order ID that contains this product
+</ParamField>
+
+<ParamField body="rating" type="number" required>
+  Rating from 1 to 5 stars
+</ParamField>
+
+<ParamField body="comment" type="string">
+  Optional review comment (max 500 characters)
+</ParamField>
+
+### Validation Rules
+
+- Order must exist and belong to the authenticated user
+- Order status must be "delivered"
+- Product must be in the order
+- Rating must be between 1 and 5
+- If a review already exists for this product/order/user combination, it will be updated (upsert)
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="review" type="object">
+  The created or updated review object
+</ResponseField>
+
+<ResponseField name="review._id" type="string">
+  Review unique identifier
+</ResponseField>
+
+<ResponseField name="review.productId" type="string">
+  Product ID reference
+</ResponseField>
+
+<ResponseField name="review.userId" type="string">
+  User ID reference
+</ResponseField>
+
+<ResponseField name="review.orderId" type="string">
+  Order ID reference
+</ResponseField>
+
+<ResponseField name="review.rating" type="number">
+  Rating from 1 to 5
+</ResponseField>
+
+<ResponseField name="review.comment" type="string">
+  Review comment (may be empty)
+</ResponseField>
+
+<ResponseField name="review.createdAt" type="string">
+  ISO 8601 timestamp of creation
+</ResponseField>
+
+<ResponseField name="review.updatedAt" type="string">
+  ISO 8601 timestamp of last update
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X POST https://api.donpalitojr.com/api/reviews \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "productId": "65f8a1b2c3d4e5f6g7h8i9j3",
+    "orderId": "65f8a1b2c3d4e5f6g7h8i9j0",
+    "rating": 5,
+    "comment": "Deliciosas empanadas, muy recomendadas!"
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "message": "Review submitted successfully",
+  "review": {
+    "_id": "65f8a1b2c3d4e5f6g7h8i9j5",
+    "productId": "65f8a1b2c3d4e5f6g7h8i9j3",
+    "userId": "65f8a1b2c3d4e5f6g7h8i9j1",
+    "orderId": "65f8a1b2c3d4e5f6g7h8i9j0",
+    "rating": 5,
+    "comment": "Deliciosas empanadas, muy recomendadas!",
+    "createdAt": "2024-03-17T15:30:00.000Z",
+    "updatedAt": "2024-03-17T15:30:00.000Z"
+  }
+}
+```
+
+### Error Responses
+
+<ResponseField name="400 Bad Request">
+  Invalid rating, product not in order, or order not delivered
+</ResponseField>
+
+```json
+{
+  "error": "Rating must be between 1 and 5"
+}
+```
+
+```json
+{
+  "error": "Product not found in this order"
+}
+```
+
+```json
+{
+  "error": "Can only review delivered orders"
+}
+```
+
+<ResponseField name="403 Forbidden">
+  User is not authorized to review this order
+</ResponseField>
+
+```json
+{
+  "error": "Not authorized to review this order"
+}
+```
+
+<ResponseField name="404 Not Found">
+  Order or product not found
+</ResponseField>
+
+```json
+{
+  "error": "Order not found"
+}
+```
+
+```json
+{
+  "error": "Product not found"
+}
+```
+
+---
+
+## Delete Review
+
+<api method="DELETE" endpoint="/api/reviews/:reviewId" />
+
+Delete a review. Only the user who created the review can delete it. The product's average rating and total review count are automatically recalculated.
+
+<Warning>
+  This endpoint is implemented in the backend but not used in the mobile app frontend.
+</Warning>
+
+### Authentication
+
+Required. User must be authenticated via Clerk and must own the review.
+
+### Path Parameters
+
+<ParamField path="reviewId" type="string" required>
+  The review ID to delete
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X DELETE https://api.donpalitojr.com/api/reviews/65f8a1b2c3d4e5f6g7h8i9j5 \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN"
+```
+
+### Example Response
+
+```json
+{
+  "message": "Review deleted successfully"
+}
+```
+
+### Error Responses
+
+<ResponseField name="403 Forbidden">
+  User is not authorized to delete this review
+</ResponseField>
+
+```json
+{
+  "error": "Not authorized to delete this review"
+}
+```
+
+<ResponseField name="404 Not Found">
+  Review not found
+</ResponseField>
+
+```json
+{
+  "error": "Review not found"
+}
+```
+
+---
+
+## Review Schema
+
+Reviews are stored with the following structure:
+
+```javascript
+{
+  productId: ObjectId,      // Reference to Product
+  userId: ObjectId,         // Reference to User
+  orderId: ObjectId,        // Reference to Order
+  rating: Number,           // 1-5 stars, required
+  comment: String,          // Optional, max 500 chars
+  createdAt: Date,          // Auto-generated
+  updatedAt: Date           // Auto-generated
+}
+```
+
+### Unique Constraint
+
+The combination of `productId`, `userId`, and `orderId` ensures a user can only have one review per product per order. Using upsert (`findOneAndUpdate` with `upsert: true`) allows updating existing reviews.
+
+### Product Rating Calculation
+
+When a review is created or deleted:
+
+1. All reviews for the product are fetched
+2. Total rating is calculated by summing all ratings
+3. Product's `averageRating` is updated: `totalRating / numberOfReviews`
+4. Product's `totalReviews` is updated: `numberOfReviews`
+
+### Review Workflow
+
+<Steps>
+  <Step title="Customer Places Order">
+    Order is created with status "pending"
+  </Step>
+  
+  <Step title="Order is Delivered">
+    Admin updates order status to "delivered"
+  </Step>
+  
+  <Step title="Customer Can Review">
+    Customer can now submit a review for products in the delivered order
+  </Step>
+  
+  <Step title="Product Rating Updated">
+    Product's average rating and total reviews are recalculated automatically
+  </Step>
+</Steps>

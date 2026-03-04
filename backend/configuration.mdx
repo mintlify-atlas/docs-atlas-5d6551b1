@@ -1,0 +1,349 @@
+---
+title: 'Configuration'
+description: 'Configure environment variables and third-party services for the backend'
+---
+
+## Environment Variables
+
+The backend uses a centralized configuration system in `src/config/env.js` that loads variables from a `.env` file.
+
+### Required Environment Variables
+
+Create a `.env` file in the backend root directory:
+
+```bash .env
+# Server
+NODE_ENV=development
+PORT=3000
+
+# Database
+DB_URL=mongodb+srv://username:password@cluster.mongodb.net/donpalito
+
+# Clerk Authentication
+CLERK_PUBLISHABLE_KEY=pk_test_...
+CLERK_SECRET_KEY=sk_test_...
+CLERK_WEBHOOK_SECRET=whsec_...
+
+# Cloudinary
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
+
+# Stripe
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_PUBLISHABLE_KEY=pk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+
+# Inngest
+INNGEST_SIGNING_KEY=signkey-...
+
+# Email
+ADMIN_EMAIL=admin@example.com
+EMAIL_PASSWORD=your_email_password
+
+# Company Info
+APP_NAME=Don Palito Jr
+LOGO_URL=https://your-logo-url.com/logo.png
+COMPANY_NAME=Don Palito Jr
+COMPANY_NIT=123456789-0
+COMPANY_ADDRESS=Calle 123 #45-67
+COMPANY_CITY=Bogotá
+COMPANY_PHONE=+57 300 1234567
+
+# Client URL
+CLIENT_URL=http://localhost:5173
+```
+
+### Environment Configuration
+
+The configuration is centralized in `src/config/env.js`:
+
+```javascript src/config/env.js
+import dotenv from "dotenv";
+
+dotenv.config({quiet: true});
+
+export const ENV = {
+    NODE_ENV: process.env.NODE_ENV,
+    PORT: process.env.PORT,
+    DB_URL: process.env.DB_URL,
+    CLERK_PUBLISHABLE_KEY: process.env.CLERK_PUBLISHABLE_KEY,
+    CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
+    CLERK_WEBHOOK_SECRET: process.env.CLERK_WEBHOOK_SECRET,
+    INNGEST_SIGNING_KEY: process.env.INNGEST_SIGNING_KEY,
+    CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
+    CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
+    CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME,
+    ADMIN_EMAIL: process.env.ADMIN_EMAIL,
+    EMAIL_PASSWORD: process.env.EMAIL_PASSWORD,
+    APP_NAME: process.env.APP_NAME,
+    LOGO_URL: process.env.LOGO_URL,
+    COMPANY_NAME: process.env.COMPANY_NAME,
+    COMPANY_NIT: process.env.COMPANY_NIT,
+    COMPANY_ADDRESS: process.env.COMPANY_ADDRESS,
+    COMPANY_CITY: process.env.COMPANY_CITY,
+    COMPANY_PHONE: process.env.COMPANY_PHONE,
+    CLIENT_URL: process.env.CLIENT_URL,
+    STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
+    STRIPE_PUBLISHABLE_KEY: process.env.STRIPE_PUBLISHABLE_KEY,
+    STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
+}
+```
+
+<Note>
+  Import environment variables using `import { ENV } from './config/env.js'` throughout the application.
+</Note>
+
+## Cloudinary Setup
+
+Cloudinary handles image uploads for product images and other media.
+
+### Configuration
+
+The Cloudinary SDK is configured in `src/config/cloudinary.js`:
+
+```javascript src/config/cloudinary.js
+import { v2 as cloudinary } from "cloudinary";
+import { ENV } from "./env.js";
+
+cloudinary.config({
+  cloud_name: ENV.CLOUDINARY_CLOUD_NAME,
+  api_key: ENV.CLOUDINARY_API_KEY,
+  api_secret: ENV.CLOUDINARY_API_SECRET,
+});
+
+export default cloudinary;
+```
+
+### Getting Cloudinary Credentials
+
+<Steps>
+  <Step title="Sign Up">
+    Create a free account at [cloudinary.com](https://cloudinary.com)
+  </Step>
+  
+  <Step title="Get Credentials">
+    From your dashboard, copy:
+    - Cloud Name
+    - API Key
+    - API Secret
+  </Step>
+  
+  <Step title="Configure">
+    Add these values to your `.env` file
+  </Step>
+</Steps>
+
+### Usage Example
+
+Images are uploaded using multer middleware and Cloudinary streams:
+
+```javascript
+import cloudinary from '../config/cloudinary.js';
+
+// Upload example
+const result = await new Promise((resolve, reject) => {
+  const uploadStream = cloudinary.uploader.upload_stream(
+    { folder: 'products' },
+    (error, result) => {
+      if (error) reject(error);
+      else resolve(result);
+    }
+  );
+  uploadStream.end(file.buffer);
+});
+```
+
+## Stripe Configuration
+
+Stripe handles all payment processing for orders.
+
+### Setup
+
+<Steps>
+  <Step title="Create Account">
+    Sign up at [stripe.com](https://stripe.com)
+  </Step>
+  
+  <Step title="Get API Keys">
+    From Developers > API keys:
+    - Copy Secret key (starts with `sk_test_`)
+    - Copy Publishable key (starts with `pk_test_`)
+  </Step>
+  
+  <Step title="Configure Webhooks">
+    Set up webhook endpoint at `/api/payment/webhook`
+    - Listen for `checkout.session.completed` events
+    - Copy webhook signing secret (starts with `whsec_`)
+  </Step>
+</Steps>
+
+<Warning>
+  Never commit Stripe secret keys to version control. Always use environment variables.
+</Warning>
+
+## Inngest Setup
+
+Inngest handles event-driven background functions like user synchronization and email sending.
+
+### Configuration
+
+Inngest is configured in `src/config/inngest.js`:
+
+```javascript src/config/inngest.js
+import { Inngest } from "inngest";
+import { connectDB } from "./db.js";
+import { User } from "../models/user.model.js";
+import { sendWelcomeEmail } from "../services/email.service.js";
+
+export const inngest = new Inngest({
+    id: "ecommerce-app",
+});
+
+// Sync user when created in Clerk
+const syncUser = inngest.createFunction(
+    {id: "sync-user"},
+    {event:"clerk.user.created"},
+    async ({event}) => {
+        await connectDB();
+        const {id, email_addresses, first_name, last_name, image_url} = event.data;
+        const newUser = {
+            clerkId: id,
+            email: email_addresses[0]?.email_address,
+            name: `${first_name || ""} ${last_name || ""}` || "Usuario",
+            imageUrl: image_url,
+            address: [],
+            wishlist: [],
+        };
+        await User.create(newUser);
+        
+        sendWelcomeEmail({
+            userName: `${first_name || ""} ${last_name || ""}`.trim() || "Usuario",
+            userEmail: email_addresses[0]?.email_address,
+        }).catch(err => console.error("Error sending welcome email:", err.message));
+    }
+);
+
+// Delete user from database when deleted in Clerk
+const deleteUserFromDB = inngest.createFunction(
+    {id: "delete-user-from-db"},
+    {event:"clerk.user.deleted"},
+    async ({event}) => {
+        await connectDB();
+        const {id} = event.data;
+        await User.deleteOne({clerkId: id});
+    }
+);
+
+export const functions = [syncUser, deleteUserFromDB];
+```
+
+### Inngest Functions
+
+The backend defines two Inngest functions:
+
+<Accordion title="sync-user">
+  Triggered when a user signs up via Clerk:
+  1. Creates user record in MongoDB
+  2. Sends welcome email
+  
+  Event: `clerk.user.created`
+</Accordion>
+
+<Accordion title="delete-user-from-db">
+  Triggered when a user is deleted in Clerk:
+  1. Removes user from MongoDB
+  
+  Event: `clerk.user.deleted`
+</Accordion>
+
+### Running Inngest
+
+```bash
+# Run Inngest dev server
+npm run inngest
+
+# Or run with main server
+npm run dev:all
+```
+
+The Inngest endpoint is served at `/api/inngest` in `server.js`:
+
+```javascript src/server.js:92
+app.use("/api/inngest", serve({client: inngest, functions}));
+```
+
+## CORS Configuration
+
+The backend uses dynamic CORS configuration to support web and mobile clients.
+
+### CORS Setup
+
+From `src/server.js`:
+
+```javascript src/server.js:26-57
+const corsOptions = {
+  origin: ENV.NODE_ENV === "production" 
+    ? ENV.CLIENT_URL  
+    : function (origin, callback) {
+        if (!origin) {
+          return callback(null, true);
+        }
+        
+        const allowedOrigins = [
+          'http://localhost:5173',           // Admin / Dashboard web
+          'http://localhost:5174',           // Frontend web
+          'http://localhost:3000',           // Same server
+          'http://localhost:8081',           // Expo metro bundler
+          'http://127.0.0.1:5173',          // Localhost alternative
+          'http://127.0.0.1:5174',
+          'http://10.0.2.2:3000',           // Android emulator
+          'http://10.0.2.2:8081',           // Expo on emulator
+        ];
+        
+        // Allow Expo dev URLs
+        if (origin.startsWith('exp://')) {
+          return callback(null, true);
+        }
+        
+        if (allowedOrigins.includes(origin)) {
+          return callback(null, true);
+        }
+        callback(new Error('Not allowed by CORS'));
+      },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'clerk-session-id']
+};
+```
+
+<Tip>
+  In production, CORS is restricted to `CLIENT_URL` from environment variables. In development, multiple origins are allowed for web and mobile development.
+</Tip>
+
+### Allowed Origins (Development)
+
+- `localhost:5173` - Admin dashboard
+- `localhost:5174` - Customer frontend
+- `localhost:8081` - Expo dev server
+- `10.0.2.2` - Android emulator networking
+- `exp://` - Expo mobile URLs
+
+## Production Configuration
+
+For production deployment:
+
+```bash .env.production
+NODE_ENV=production
+PORT=3000
+CLIENT_URL=https://your-domain.com
+
+# Use production keys
+CLERK_PUBLISHABLE_KEY=pk_live_...
+CLERK_SECRET_KEY=sk_live_...
+STRIPE_SECRET_KEY=sk_live_...
+```
+
+<Warning>
+  Always use separate API keys for development and production environments.
+</Warning>

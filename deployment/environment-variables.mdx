@@ -1,0 +1,344 @@
+---
+title: 'Environment Variables'
+description: 'Complete reference for all environment variables required to run Don Palito Jr'
+---
+
+This guide covers all environment variables needed to configure Don Palito Jr. Variables are grouped by service for easier management.
+
+## Server Configuration
+
+<ParamField path="NODE_ENV" type="string" required>
+  Application environment mode
+  
+  **Example:** `production` or `development`
+  
+  Controls CORS settings, static file serving, and other environment-specific behaviors.
+</ParamField>
+
+<ParamField path="PORT" type="number" default="3000">
+  Server port number
+  
+  **Example:** `3000`
+  
+  The port on which the backend server will listen. Defaults to 3000 if not specified.
+</ParamField>
+
+## Database Configuration
+
+<ParamField path="DB_URL" type="string" required>
+  MongoDB connection string
+  
+  **Example:** `mongodb+srv://username:password@cluster.mongodb.net/donpalitojr?retryWrites=true&w=majority`
+  
+  Full MongoDB connection URL. For production, use MongoDB Atlas. The connection is established in `backend/src/config/db.js`.
+</ParamField>
+
+<Warning>
+Never commit your MongoDB credentials to version control. Use environment variables for all sensitive data.
+</Warning>
+
+## Authentication (Clerk)
+
+Don Palito Jr uses Clerk for authentication. You need to create a Clerk account and application at [clerk.com](https://clerk.com).
+
+<ParamField path="CLERK_PUBLISHABLE_KEY" type="string" required>
+  Clerk publishable API key
+  
+  **Example:** `pk_test_...` or `pk_live_...`
+  
+  Public key used by frontend applications to initialize Clerk.
+</ParamField>
+
+<ParamField path="CLERK_SECRET_KEY" type="string" required>
+  Clerk secret API key
+  
+  **Example:** `sk_test_...` or `sk_live_...`
+  
+  Secret key used by backend to verify authentication tokens. Keep this secure.
+</ParamField>
+
+<ParamField path="CLERK_WEBHOOK_SECRET" type="string" required>
+  Clerk webhook signing secret
+  
+  **Example:** `whsec_...`
+  
+  Used to verify webhook requests from Clerk for user sync operations. Found in your Clerk dashboard under Webhooks.
+</ParamField>
+
+<Note>
+The backend listens for Clerk webhooks at `/api/webhooks/clerk` to sync user data with MongoDB. Configure this endpoint in your Clerk dashboard.
+</Note>
+
+## Background Jobs (Inngest)
+
+Inngest handles background job processing for user synchronization and email sending.
+
+<ParamField path="INNGEST_SIGNING_KEY" type="string" required>
+  Inngest signing key for secure event processing
+  
+  **Example:** `signkey-prod-...`
+  
+  Get this from your Inngest dashboard at [inngest.com](https://inngest.com). The Inngest endpoint is exposed at `/api/inngest`.
+</ParamField>
+
+## File Storage (Cloudinary)
+
+Cloudinary is used for product image uploads and management.
+
+<ParamField path="CLOUDINARY_CLOUD_NAME" type="string" required>
+  Your Cloudinary cloud name
+  
+  **Example:** `dxyz123abc`
+  
+  Found in your Cloudinary dashboard.
+</ParamField>
+
+<ParamField path="CLOUDINARY_API_KEY" type="string" required>
+  Cloudinary API key
+  
+  **Example:** `123456789012345`
+  
+  API credentials from Cloudinary dashboard.
+</ParamField>
+
+<ParamField path="CLOUDINARY_API_SECRET" type="string" required>
+  Cloudinary API secret
+  
+  **Example:** `abcdefghijklmnopqrstuvwxyz`
+  
+  Secret key for Cloudinary API authentication. Keep this secure.
+</ParamField>
+
+<Accordion title="Cloudinary Configuration Code">
+The Cloudinary SDK is configured in `backend/src/config/cloudinary.js`:
+
+```javascript
+import { v2 as cloudinary } from "cloudinary";
+import { ENV } from "./env.js";
+
+cloudinary.config({
+  cloud_name: ENV.CLOUDINARY_CLOUD_NAME,
+  api_key: ENV.CLOUDINARY_API_KEY,
+  api_secret: ENV.CLOUDINARY_API_SECRET,
+});
+```
+</Accordion>
+
+## Email Service
+
+Email sending is handled through Nodemailer with Gmail SMTP.
+
+<ParamField path="ADMIN_EMAIL" type="string" required>
+  Gmail address for sending emails
+  
+  **Example:** `yourbusiness@gmail.com`
+  
+  The Gmail account used to send welcome emails and order notifications.
+</ParamField>
+
+<ParamField path="EMAIL_PASSWORD" type="string" required>
+  Gmail app password
+  
+  **Example:** `abcd efgh ijkl mnop`
+  
+  Use an App Password, not your regular Gmail password. Generate one at [Google Account Security](https://myaccount.google.com/security).
+</ParamField>
+
+<Warning>
+For production, enable 2-factor authentication on your Gmail account and use App Passwords instead of your regular password.
+</Warning>
+
+## Payment Processing (Stripe)
+
+Stripe handles all payment transactions.
+
+<ParamField path="STRIPE_SECRET_KEY" type="string" required>
+  Stripe secret key
+  
+  **Example:** `sk_test_...` or `sk_live_...`
+  
+  Backend secret key for processing payments. Use test keys for development and live keys for production.
+</ParamField>
+
+<ParamField path="STRIPE_PUBLISHABLE_KEY" type="string" required>
+  Stripe publishable key
+  
+  **Example:** `pk_test_...` or `pk_live_...`
+  
+  Public key used by frontend to initialize Stripe checkout.
+</ParamField>
+
+<ParamField path="STRIPE_WEBHOOK_SECRET" type="string" required>
+  Stripe webhook signing secret
+  
+  **Example:** `whsec_...`
+  
+  Used to verify webhook events from Stripe. Configure webhook endpoint at `/api/payment/webhook` in your Stripe dashboard.
+</ParamField>
+
+<Note>
+The payment webhook at `/api/payment/webhook` uses raw body parsing as required by Stripe. See `backend/src/server.js:61-71` for the implementation.
+</Note>
+
+## Application Branding
+
+These variables customize the application's appearance and business information.
+
+<ParamField path="APP_NAME" type="string" required>
+  Application display name
+  
+  **Example:** `Don Palito Jr`
+  
+  Used in emails and throughout the application.
+</ParamField>
+
+<ParamField path="LOGO_URL" type="string">
+  URL to your company logo
+  
+  **Example:** `https://res.cloudinary.com/yourcloud/image/upload/logo.png`
+  
+  Used in email templates and branding.
+</ParamField>
+
+<ParamField path="COMPANY_NAME" type="string" required>
+  Legal company name
+  
+  **Example:** `Don Palito Jr S.A.S.`
+  
+  Used in invoices and receipts.
+</ParamField>
+
+<ParamField path="COMPANY_NIT" type="string" required>
+  Tax identification number
+  
+  **Example:** `900123456-7`
+  
+  Company tax ID used in invoices.
+</ParamField>
+
+<ParamField path="COMPANY_ADDRESS" type="string" required>
+  Company physical address
+  
+  **Example:** `Calle 123 #45-67`
+  
+  Used in invoices and order documentation.
+</ParamField>
+
+<ParamField path="COMPANY_CITY" type="string" required>
+  Company city
+  
+  **Example:** `Bogotá, Colombia`
+  
+  City where the business is located.
+</ParamField>
+
+<ParamField path="COMPANY_PHONE" type="string" required>
+  Company contact phone number
+  
+  **Example:** `+57 300 123 4567`
+  
+  Customer service phone number.
+</ParamField>
+
+## Client Configuration
+
+<ParamField path="CLIENT_URL" type="string" required>
+  Frontend application URL
+  
+  **Example:** `https://www.donpalitojr.com` or `http://localhost:5173`
+  
+  Used for CORS configuration in production. In production mode, only this origin is allowed. In development, multiple localhost ports are permitted.
+</ParamField>
+
+<Accordion title="CORS Configuration">
+The server configures CORS differently based on environment:
+
+```javascript
+const corsOptions = {
+  origin: ENV.NODE_ENV === "production" 
+    ? ENV.CLIENT_URL  
+    : function (origin, callback) {
+        const allowedOrigins = [
+          'http://localhost:5173',  // Admin panel
+          'http://localhost:5174',  // Frontend
+          'http://localhost:8081',  // Expo metro
+          // ... more development origins
+        ];
+        // Allow expo:// URLs for mobile development
+        if (origin.startsWith('exp://')) {
+          return callback(null, true);
+        }
+      },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+};
+```
+
+See `backend/src/server.js:26-57` for full implementation.
+</Accordion>
+
+## Example .env File
+
+Create a `.env` file in the `backend/` directory:
+
+```bash
+# Server
+NODE_ENV=production
+PORT=3000
+
+# Database
+DB_URL=mongodb+srv://user:password@cluster.mongodb.net/donpalitojr
+
+# Clerk Authentication
+CLERK_PUBLISHABLE_KEY=pk_live_xxxxxxxxxxxxx
+CLERK_SECRET_KEY=sk_live_xxxxxxxxxxxxx
+CLERK_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxx
+
+# Inngest
+INNGEST_SIGNING_KEY=signkey-prod-xxxxxxxxxxxxx
+
+# Cloudinary
+CLOUDINARY_CLOUD_NAME=your-cloud-name
+CLOUDINARY_API_KEY=123456789012345
+CLOUDINARY_API_SECRET=abcdefghijklmnopqrst
+
+# Email (Gmail)
+ADMIN_EMAIL=yourbusiness@gmail.com
+EMAIL_PASSWORD=your-app-password
+
+# Stripe
+STRIPE_SECRET_KEY=sk_live_xxxxxxxxxxxxx
+STRIPE_PUBLISHABLE_KEY=pk_live_xxxxxxxxxxxxx
+STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxx
+
+# Branding
+APP_NAME=Don Palito Jr
+LOGO_URL=https://res.cloudinary.com/yourcloud/logo.png
+COMPANY_NAME=Don Palito Jr S.A.S.
+COMPANY_NIT=900123456-7
+COMPANY_ADDRESS=Calle 123 #45-67
+COMPANY_CITY=Bogotá, Colombia
+COMPANY_PHONE=+57 300 123 4567
+
+# Client
+CLIENT_URL=https://www.donpalitojr.com
+```
+
+## Environment Variable Loading
+
+Environment variables are loaded using `dotenv` in `backend/src/config/env.js`:
+
+```javascript
+import dotenv from "dotenv";
+
+dotenv.config({quiet: true});
+
+export const ENV = {
+    NODE_ENV: process.env.NODE_ENV,
+    PORT: process.env.PORT,
+    DB_URL: process.env.DB_URL,
+    // ... all other variables
+};
+```
+
+All configuration is centralized in this single file for easy maintenance.

@@ -1,0 +1,405 @@
+---
+title: 'Payment'
+description: 'Payment processing endpoints for Stripe integration and bank transfer orders'
+---
+
+<Note>
+  Payment endpoints integrate with Stripe for card payments and support bank transfer orders. Most endpoints require authentication.
+</Note>
+
+## Create Payment Intent
+
+<api method="POST" endpoint="/api/payment/create-intent" />
+
+Create a Stripe Payment Intent for processing card payments. Validates cart items, applies coupons, and creates a Stripe customer if needed.
+
+### Authentication
+
+Required. User must be authenticated via Clerk.
+
+### Request Body
+
+<ParamField body="cartItems" type="array" required>
+  Array of items to purchase
+</ParamField>
+
+<ParamField body="cartItems[].product" type="object" required>
+  Product object with `_id` field
+</ParamField>
+
+<ParamField body="cartItems[].quantity" type="number" required>
+  Quantity to purchase
+</ParamField>
+
+<ParamField body="shippingAddress" type="object" required>
+  Shipping address details
+</ParamField>
+
+<ParamField body="shippingAddress.fullName" type="string" required>
+  Recipient's full name
+</ParamField>
+
+<ParamField body="shippingAddress.streetAddress" type="string" required>
+  Street address
+</ParamField>
+
+<ParamField body="shippingAddress.city" type="string" required>
+  City
+</ParamField>
+
+<ParamField body="shippingAddress.phoneNumber" type="string" required>
+  Contact phone number
+</ParamField>
+
+<ParamField body="couponCode" type="string">
+  Optional coupon code for discount
+</ParamField>
+
+### Response
+
+<ResponseField name="clientSecret" type="string" required>
+  Stripe client secret for completing the payment on the frontend
+</ResponseField>
+
+<ResponseField name="paymentIntentId" type="string" required>
+  Stripe Payment Intent ID
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X POST https://api.donpalitojr.com/api/payment/create-intent \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cartItems": [
+      {
+        "product": {"_id": "65f8a1b2c3d4e5f6g7h8i9j3"},
+        "quantity": 2
+      }
+    ],
+    "shippingAddress": {
+      "fullName": "Juan Pérez",
+      "streetAddress": "Calle 123 #45-67",
+      "city": "Bogotá",
+      "phoneNumber": "+57 300 123 4567"
+    },
+    "couponCode": "WELCOME10"
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "clientSecret": "pi_3ABC123DEF456_secret_XYZ789",
+  "paymentIntentId": "pi_3ABC123DEF456"
+}
+```
+
+### Error Responses
+
+<ResponseField name="400 Bad Request">
+  Cart is empty, shipping address missing, insufficient stock, invalid coupon, or amount below minimum
+</ResponseField>
+
+```json
+{
+  "error": "Cart is empty"
+}
+```
+
+```json
+{
+  "error": "Insufficient stock for Empanada de Pollo"
+}
+```
+
+```json
+{
+  "error": "El cupón no es válido o ha expirado."
+}
+```
+
+```json
+{
+  "error": "The minimum amount to process payments is $2000 COP"
+}
+```
+
+<ResponseField name="404 Not Found">
+  Product not found
+</ResponseField>
+
+```json
+{
+  "error": "Product Empanada de Pollo not found"
+}
+```
+
+---
+
+## Stripe Webhook Handler
+
+<api method="POST" endpoint="/api/payment/webhook" />
+
+Webhook endpoint for Stripe to notify payment events. Handles `payment_intent.succeeded` events to create orders automatically.
+
+### Authentication
+
+No authentication required. Validates Stripe signature instead.
+
+### Headers
+
+<ParamField header="stripe-signature" type="string" required>
+  Stripe webhook signature for verification
+</ParamField>
+
+### Request Body
+
+Stripe event object (raw body required for signature verification).
+
+### Response
+
+```json
+{
+  "received": true
+}
+```
+
+### Event Handling
+
+When a `payment_intent.succeeded` event is received:
+
+1. Validates payment hasn't already been processed
+2. Creates order with items from payment metadata
+3. Reduces product stock
+4. Marks coupon as used (if applicable)
+5. Sends order confirmation emails to customer and admin
+
+### Example Webhook Event
+
+```json
+{
+  "type": "payment_intent.succeeded",
+  "data": {
+    "object": {
+      "id": "pi_3ABC123DEF456",
+      "amount": 1700000,
+      "currency": "cop",
+      "metadata": {
+        "userId": "65f8a1b2c3d4e5f6g7h8i9j1",
+        "clerkId": "user_2abc123def456",
+        "orderItems": "[{\"product\":\"65f8a1b2c3d4e5f6g7h8i9j3\",\"price\":3500,\"quantity\":2}]",
+        "shippingAddress": "{\"fullName\":\"Juan Pérez\",\"streetAddress\":\"Calle 123\",\"city\":\"Bogotá\",\"phoneNumber\":\"+57 300 123 4567\"}",
+        "totalPrice": "17000",
+        "couponCode": "WELCOME10"
+      }
+    }
+  }
+}
+```
+
+### Error Responses
+
+<ResponseField name="400 Bad Request">
+  Invalid webhook signature
+</ResponseField>
+
+```json
+{
+  "error": "Webhook Error: Invalid signature"
+}
+```
+
+---
+
+## Create Transfer Order
+
+<api method="POST" endpoint="/api/payment/create-transfer-order" />
+
+Create an order with bank transfer as the payment method. The order is created immediately with "pending" status.
+
+### Authentication
+
+Required. User must be authenticated via Clerk.
+
+### Request Body
+
+<ParamField body="cartItems" type="array" required>
+  Array of items to purchase
+</ParamField>
+
+<ParamField body="cartItems[].product" type="object" required>
+  Product object with `_id` field
+</ParamField>
+
+<ParamField body="cartItems[].quantity" type="number" required>
+  Quantity to purchase
+</ParamField>
+
+<ParamField body="shippingAddress" type="object" required>
+  Shipping address details (same fields as payment intent)
+</ParamField>
+
+<ParamField body="couponCode" type="string">
+  Optional coupon code for discount
+</ParamField>
+
+### Response
+
+<ResponseField name="order" type="object">
+  The created order object
+</ResponseField>
+
+<ResponseField name="order._id" type="string">
+  Order unique identifier
+</ResponseField>
+
+<ResponseField name="order.orderItems" type="array">
+  Array of ordered items
+</ResponseField>
+
+<ResponseField name="order.shippingAddress" type="object">
+  Shipping address details
+</ResponseField>
+
+<ResponseField name="order.paymentResult" type="object">
+  Payment info with `id` like "transfer_1234567890" and `status: "pending"`
+</ResponseField>
+
+<ResponseField name="order.totalPrice" type="number">
+  Total order price (includes discount, no shipping cost)
+</ResponseField>
+
+<ResponseField name="order.status" type="string">
+  Order status (always "pending" initially)
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X POST https://api.donpalitojr.com/api/payment/create-transfer-order \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cartItems": [
+      {
+        "product": {"_id": "65f8a1b2c3d4e5f6g7h8i9j3"},
+        "quantity": 2
+      }
+    ],
+    "shippingAddress": {
+      "fullName": "Juan Pérez",
+      "streetAddress": "Calle 123 #45-67",
+      "city": "Bogotá",
+      "phoneNumber": "+57 300 123 4567"
+    },
+    "couponCode": "SAVE15"
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "order": {
+    "_id": "65f8a1b2c3d4e5f6g7h8i9j0",
+    "user": "65f8a1b2c3d4e5f6g7h8i9j1",
+    "clerkId": "user_2abc123def456",
+    "orderItems": [
+      {
+        "product": "65f8a1b2c3d4e5f6g7h8i9j3",
+        "name": "Empanada de Pollo",
+        "price": 3500,
+        "quantity": 2
+      }
+    ],
+    "shippingAddress": {
+      "fullName": "Juan Pérez",
+      "streetAddress": "Calle 123 #45-67",
+      "city": "Bogotá",
+      "phoneNumber": "+57 300 123 4567"
+    },
+    "paymentResult": {
+      "id": "transfer_1710512400000",
+      "status": "pending"
+    },
+    "totalPrice": 5950,
+    "status": "pending",
+    "createdAt": "2024-03-15T10:30:00.000Z"
+  }
+}
+```
+
+### Error Responses
+
+<ResponseField name="400 Bad Request">
+  Cart is empty, shipping address missing, insufficient stock, or invalid/expired coupon
+</ResponseField>
+
+```json
+{
+  "error": "Cart is empty"
+}
+```
+
+```json
+{
+  "error": "Stock insuficiente para Empanada de Pollo"
+}
+```
+
+```json
+{
+  "error": "Ya usaste este cupón anteriormente."
+}
+```
+
+<ResponseField name="404 Not Found">
+  Product not found
+</ResponseField>
+
+```json
+{
+  "error": "Producto no encontrado"
+}
+```
+
+---
+
+## Payment Flow
+
+<Steps>
+  <Step title="Create Payment Intent">
+    Call `/api/payment/create-intent` to get a Stripe client secret
+  </Step>
+  
+  <Step title="Complete Payment on Frontend">
+    Use Stripe.js with the client secret to collect payment details
+  </Step>
+  
+  <Step title="Stripe Processes Payment">
+    Stripe charges the customer and sends webhook to `/api/payment/webhook`
+  </Step>
+  
+  <Step title="Order Created Automatically">
+    Webhook handler creates the order, reduces stock, and sends emails
+  </Step>
+</Steps>
+
+### Alternative: Bank Transfer Flow
+
+<Steps>
+  <Step title="Create Transfer Order">
+    Call `/api/payment/create-transfer-order` to create order with pending status
+  </Step>
+  
+  <Step title="Customer Transfers Payment">
+    Customer makes bank transfer offline
+  </Step>
+  
+  <Step title="Admin Confirms Payment">
+    Admin updates order status to "paid" via admin endpoints
+  </Step>
+</Steps>

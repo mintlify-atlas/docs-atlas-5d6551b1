@@ -1,0 +1,373 @@
+---
+title: 'Product Reviews'
+description: 'Customer review system with ratings, automatic average calculation, and delivery verification'
+---
+
+## Overview
+
+Don Palito Jr includes a product review system that allows customers to rate and review products from their delivered orders. Reviews automatically update product average ratings and help other customers make informed purchasing decisions.
+
+## Review Schema
+
+Reviews are linked to products, users, and orders for comprehensive tracking:
+
+```javascript
+const reviewSchema = new mongoose.Schema({
+    productId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Product",
+        required: true
+    },
+    userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true
+    },
+    orderId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Order",
+        required: true
+    },
+    rating: {
+        type: Number,
+        required: true,
+        min: 1,
+        max: 5
+    },
+    comment: {
+        type: String,
+        trim: true,
+        maxlength: 500,
+        default: '',
+    },
+},
+{
+    timestamps: true
+});
+```
+
+<Note>
+  Reviews require three IDs (product, user, order) to ensure only verified purchasers can leave reviews for products they actually received.
+</Note>
+
+## Review Features
+
+<CardGroup cols={2}>
+  <Card title="Verified Purchases" icon="shield-check">
+    Only customers who received a product can review it.
+  </Card>
+  
+  <Card title="5-Star Rating" icon="star">
+    Standard 1-5 star rating system with optional text comment.
+  </Card>
+  
+  <Card title="Auto-Update Ratings" icon="calculator">
+    Product average ratings are automatically recalculated when reviews are added or deleted.
+  </Card>
+  
+  <Card title="Order-Based" icon="receipt">
+    Reviews are tied to specific orders, preventing duplicate reviews.
+  </Card>
+</CardGroup>
+
+## Creating Reviews
+
+Customers can submit reviews for products in their delivered orders:
+
+```javascript
+export async function createReview(req, res) {
+    const { productId, orderId, rating } = req.body;
+
+    if (!rating || rating < 1 || rating > 5) {
+        return res.status(400).json({ error: "Rating must be between 1 and 5" });
+    }
+
+    const user = req.user;
+
+    const order = await Order.findById(orderId);
+
+    // verify order exists and is delivered
+    if (!order) {
+        return res.status(404).json({ error: "Order not found" });
+    }
+
+    if (order.clerkId !== user.clerkId) {
+        return res.status(403).json({ error: "Not authorized to review this order" });
+    }
+
+    if (order.status !== "delivered") {
+        return res.status(400).json({ error: "Can only review delivered orders" });
+    }
+
+    // verify product is in the order
+    const productInOrder = order.orderItems.find(
+        (item) => item.product.toString() === productId.toString()
+    );
+    if (!productInOrder) {
+        return res.status(400).json({ error: "Product not found in this order" });
+    }
+
+    // atomic update or create
+    const review = await Review.findOneAndUpdate(
+        { productId, userId: user._id, orderId },
+        { rating, orderId, productId, userId: user._id },
+        { new: true, upsert: true, runValidators: true }
+    );
+
+    // update the product rating with atomic aggregation
+    const reviews = await Review.find({ productId });
+    const totalRating = reviews.reduce((sum, rev) => sum + rev.rating, 0);        
+    
+    const updatedProduct = await Product.findByIdAndUpdate(
+        productId,
+        {
+            averageRating: totalRating / reviews.length,
+            totalReviews: reviews.length,
+        },
+        { new: true, runValidators: true }
+    );
+
+    if (!updatedProduct) {
+        await Review.findByIdAndDelete(review._id);
+        return res.status(404).json({ error: "Product not found" });
+    }
+
+    return res.status(201).json({ 
+        message: "Review submitted successfully", 
+        review
+    });
+}
+```
+
+<Accordion title="Review Creation Process">
+  1. **Validate Rating**: Ensure rating is between 1-5
+  2. **Verify Order**: Check that order exists and belongs to user
+  3. **Check Delivery**: Only "delivered" orders can be reviewed
+  4. **Verify Product**: Ensure product was in the order
+  5. **Create/Update Review**: Use upsert to prevent duplicates
+  6. **Recalculate Ratings**: Update product's average rating and count
+  7. **Rollback on Failure**: Delete review if product update fails
+</Accordion>
+
+<Tip>
+  The system uses `findOneAndUpdate` with `upsert: true` to allow customers to update their existing review instead of creating duplicates.
+</Tip>
+
+## Review Verification
+
+Multiple checks ensure review authenticity:
+
+### Order Ownership Verification
+
+```javascript
+if (order.clerkId !== user.clerkId) {
+    return res.status(403).json({ error: "Not authorized to review this order" });
+}
+```
+
+### Delivery Status Check
+
+```javascript
+if (order.status !== "delivered") {
+    return res.status(400).json({ error: "Can only review delivered orders" });
+}
+```
+
+### Product in Order Verification
+
+```javascript
+const productInOrder = order.orderItems.find(
+    (item) => item.product.toString() === productId.toString()
+);
+if (!productInOrder) {
+    return res.status(400).json({ error: "Product not found in this order" });
+}
+```
+
+<Note>
+  These checks ensure that only verified customers who actually received a product can leave reviews, maintaining review credibility.
+</Note>
+
+## Automatic Rating Calculation
+
+When a review is created or deleted, product ratings are automatically updated:
+
+```javascript
+const reviews = await Review.find({ productId });
+const totalRating = reviews.reduce((sum, rev) => sum + rev.rating, 0);
+
+await Product.findByIdAndUpdate(
+    productId,
+    {
+        averageRating: totalRating / reviews.length,
+        totalReviews: reviews.length,
+    },
+    { new: true, runValidators: true }
+);
+```
+
+### Product Rating Fields
+
+The product schema stores calculated values:
+
+```javascript
+averageRating: {
+    type: Number,
+    min: 0,
+    max: 5,
+    default: 0
+},
+totalReviews: {
+    type: Number,
+    min: 0,
+    default: 0
+}
+```
+
+<Tip>
+  Storing calculated averages on the product allows fast display without recalculating on every product fetch. The values are automatically kept in sync when reviews change.
+</Tip>
+
+## Deleting Reviews
+
+Customers can delete their own reviews:
+
+```javascript
+export async function deleteReview(req, res) {
+    const { reviewId } = req.params;
+    const user = req.user;
+
+    const review = await Review.findById(reviewId);
+    if (!review) {
+        return res.status(404).json({ error: "Review not found" });
+    }
+
+    if (review.userId.toString() !== user._id.toString()) {
+        return res.status(403).json({ error: "Not authorized to delete this review" });
+    }
+
+    const productId = review.productId;
+
+    await Review.findByIdAndDelete(reviewId);
+
+    // Recalculate product rating
+    const reviews = await Review.find({ productId });
+    const totalRating = reviews.reduce((sum, rev) => sum + rev.rating, 0);
+    await Product.findByIdAndUpdate(productId, {
+        averageRating: reviews.length > 0 ? totalRating / reviews.length : 0,
+        totalReviews: reviews.length,
+    });
+
+    return res.status(200).json({ message: "Review deleted successfully" });
+}
+```
+
+<Accordion title="Rating Update on Deletion">
+  When a review is deleted:
+  1. Review is removed from the database
+  2. Remaining reviews for the product are fetched
+  3. New average is calculated from remaining reviews
+  4. If no reviews remain, `averageRating` is set to 0
+  5. `totalReviews` count is updated
+</Accordion>
+
+## Review Status in Orders
+
+The order listing includes review status to help users know which orders they can review:
+
+```javascript
+export async function getUserOrders(req, res) {
+    const orders = await Order.find({ clerkId: req.user.clerkId })
+        .populate("orderItems.product", "name images price")
+        .sort({ createdAt: -1 });
+
+    const orderIds = orders.map((order) => order._id);
+    const reviews = await Review.find({ orderId: { $in: orderIds } });
+    const reviewedOrderIds = new Set(reviews.map((review) => review.orderId.toString()));
+
+    const ordersWithReviewStatus = orders.map((order) => {
+        // ...
+        return {
+            ...orderObj,
+            orderItems: orderItemsWithNames,
+            hasReviewed: reviewedOrderIds.has(order._id.toString()),
+        };
+    });
+
+    return res.status(200).json({ orders: ordersWithReviewStatus });
+}
+```
+
+<Note>
+  The `hasReviewed` flag helps the frontend display "Write a Review" buttons only for orders that haven't been reviewed yet.
+</Note>
+
+## Review Display
+
+Products display their aggregated rating information:
+
+```json
+{
+  "_id": "abc123",
+  "name": "Delicious Empanada",
+  "price": 5000,
+  "averageRating": 4.5,
+  "totalReviews": 24,
+  // ... other fields
+}
+```
+
+This allows frontends to show:
+- ⭐⭐⭐⭐⭐ 4.5/5 (24 reviews)
+- Star ratings on product cards
+- Review counts for social proof
+
+## Rating Constraints
+
+<CardGroup cols={2}>
+  <Card title="Minimum Rating" icon="1">
+    Ratings must be at least 1 star.
+  </Card>
+  
+  <Card title="Maximum Rating" icon="5">
+    Ratings cannot exceed 5 stars.
+  </Card>
+  
+  <Card title="Comment Length" icon="message">
+    Optional comments are limited to 500 characters.
+  </Card>
+  
+  <Card title="One Review Per Order" icon="lock">
+    Each customer can leave one review per product per order.
+  </Card>
+</CardGroup>
+
+## Use Cases
+
+### Customer Perspective
+
+1. Customer places an order
+2. Order is delivered (status = "delivered")
+3. Customer sees "Write a Review" option
+4. Customer submits 5-star rating with comment
+5. Review appears on product page
+6. Customer can later edit or delete their review
+
+### Business Perspective
+
+1. Reviews build trust with potential customers
+2. High ratings improve product visibility
+3. Feedback helps improve products and service
+4. Verified purchase badges increase credibility
+
+<Tip>
+  Consider displaying reviews prominently on product pages and highlighting highly-rated products to drive conversions.
+</Tip>
+
+<Accordion title="Source Code Reference">
+  - Review Model: `backend/src/models/review.model.js:1-38`
+  - Review Controller: `backend/src/controllers/review.controller.js:5-105`
+  - Create Review: Lines 5-72
+  - Delete Review: Lines 74-105
+  - Order with Review Status: `backend/src/controllers/order.controller.js:77-108`
+</Accordion>

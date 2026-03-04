@@ -1,0 +1,262 @@
+---
+title: 'Product Catalog'
+description: 'Comprehensive product management system with categories, images, and inventory tracking'
+---
+
+## Overview
+
+Don Palito Jr features a complete product catalog system that allows administrators to create, manage, and organize products. Each product includes detailed information, multiple images hosted on Cloudinary, and real-time inventory tracking.
+
+## Product Schema
+
+Products in the system are built on a robust MongoDB schema with the following fields:
+
+```javascript
+const productSchema = new mongoose.Schema({
+   name: {
+    type: String,
+    required: true
+   },
+   description: {
+    type: String,
+    required: true
+   },
+   price: {
+    type: Number,
+    required: true,
+    min: 0
+   },
+   stock: {
+    type: Number,
+    required: true,
+    min: 0,
+    default: 0
+   },
+   category: {
+    type: String,
+    required: true
+   },
+   images: [
+    {
+        type: String,
+        required: true
+    }
+   ],
+   averageRating: {
+    type: Number,
+    min: 0,
+    max: 5,
+    default: 0
+   },
+   totalReviews: {
+    type: Number,
+    min: 0,
+    default: 0
+   }    
+},
+{
+    timestamps: true
+});
+```
+
+<Note>
+  The product schema includes automatic timestamps for `createdAt` and `updatedAt` fields, which help track when products were added or modified.
+</Note>
+
+## Product Features
+
+<CardGroup cols={2}>
+  <Card title="Multi-Image Support" icon="images">
+    Each product supports up to 3 high-quality images stored securely on Cloudinary.
+  </Card>
+  
+  <Card title="Real-time Inventory" icon="boxes">
+    Stock levels are automatically updated when orders are placed, preventing overselling.
+  </Card>
+  
+  <Card title="Product Categories" icon="tags">
+    Organize products into categories for easy browsing and filtering.
+  </Card>
+  
+  <Card title="Customer Ratings" icon="star">
+    Displays average rating and total review count to build customer trust.
+  </Card>
+</CardGroup>
+
+## Creating Products
+
+Administrators can create new products with comprehensive details and images. The system validates all required fields and handles image uploads to Cloudinary:
+
+```javascript
+export async function createProduct (req, res) {
+    const {name, description, price, stock, category} = req.body;
+    
+    if (!name || !description || !price || !stock || !category) {
+        return res.status(400).json({message: "All fields are required"});
+    }
+
+    if (!req.files || req.files.length === 0) {
+        return res.status(400).json({ message: "At least one image is required" });
+    }
+
+    if (req.files.length > 3) {
+        return res.status(400).json({ message: "Maximum three images allowed" });
+    }
+
+    const uploadPromises = req.files.map((file) => {
+        return cloudinary.uploader.upload(file.path, {
+            folder: "products",
+        });
+    });
+
+    const uploadResults = await Promise.all(uploadPromises);
+    const imageUrls = uploadResults.map((result) => result.secure_url);
+
+    const product = await Product.create({
+        name,
+        description,
+        price: parseFloat(price),
+        stock: parseInt(stock),
+        category,
+        images: imageUrls
+    });
+    
+    return res.status(201).json({message: "Product created successfully", product});
+}
+```
+
+<Tip>
+  Images are uploaded in parallel using `Promise.all()` for better performance when adding multiple product photos.
+</Tip>
+
+## Image Management with Cloudinary
+
+All product images are stored on Cloudinary, providing:
+
+- **Automatic Optimization**: Images are optimized for web delivery
+- **CDN Distribution**: Fast loading times globally
+- **Secure Storage**: URLs are permanent and secure
+- **Easy Deletion**: Images are automatically removed when products are deleted
+
+### Cloudinary Configuration
+
+```javascript
+import { v2 as cloudinary } from "cloudinary";
+
+cloudinary.config({
+  cloud_name: ENV.CLOUDINARY_CLOUD_NAME,
+  api_key: ENV.CLOUDINARY_API_KEY,
+  api_secret: ENV.CLOUDINARY_API_SECRET,
+});
+```
+
+## Updating Products
+
+Administrators can update product information including name, description, price, stock, category, and images:
+
+```javascript
+export async function updateProduct (req, res) {
+    const {id} = req.params;
+    const {name, description, price, stock, category} = req.body;
+
+    const product = await Product.findById(id);
+
+    if (!product) {
+        return res.status(404).json({message: "Product not found"});
+    }
+
+    if (name) product.name = name;
+    if (description) product.description = description;
+    if (price !== undefined) product.price = parseFloat(price);
+    if (stock !== undefined) product.stock = parseInt(stock);
+    if (category) product.category = category;
+
+    if (req.files && req.files.length > 0) {
+        if (req.files.length > 3) {
+            return res.status(400).json({ message: "Maximum three images allowed" });
+        }
+
+        const uploadPromises = req.files.map((file) => {
+            return cloudinary.uploader.upload(file.path, {
+                folder: "products",
+            });
+        });
+
+        const uploadResults = await Promise.all(uploadPromises);
+        product.images = uploadResults.map((result) => result.secure_url);
+    }
+
+    await product.save();
+    return res.status(200).json({message: "Product updated successfully", product});
+}
+```
+
+<Accordion title="Source Code Reference">
+  - Product Model: `backend/src/models/product.model.js:3-50`
+  - Product Controller: `backend/src/controllers/product.controller.js:3-16`
+  - Admin Controller: `backend/src/controllers/admin.controller.js:17-313`
+  - Cloudinary Config: `backend/src/config/cloudinary.js:1-11`
+</Accordion>
+
+## Inventory Tracking
+
+The system automatically decrements stock when orders are placed, ensuring accurate inventory levels:
+
+<Note>
+  Stock validation occurs before order creation to prevent overselling. If insufficient stock is available, the order is rejected with a clear error message.
+</Note>
+
+## Fetching Products
+
+Customers can browse all products, which are returned sorted by creation date (newest first):
+
+```javascript
+export async function getAllProducts (_, res) {
+    const products = await Product.find().sort({createdAt: -1});
+    return res.status(200).json(products);
+}
+```
+
+Individual products can be retrieved by ID:
+
+```javascript
+export async function getProductById(req, res) {
+    const { id } = req.params;
+    const product = await Product.findById(id);
+
+    if (!product) {
+        return res.status(404).json({ message: "Product not found" });
+    }
+    return res.status(200).json(product);
+}
+```
+
+## Product Deletion
+
+When a product is deleted, all associated Cloudinary images are automatically removed:
+
+```javascript
+export const deleteProduct = async (req, res) => {
+    const { id } = req.params;
+    const product = await Product.findById(id);
+    
+    if (!product) {
+        return res.status(404).json({ message: "Product not found" });
+    }
+
+    if (product.images && product.images.length > 0) {
+        const deletePromises = product.images.map((imageUrl) => {
+            const publicId = "products/" + imageUrl.split("/products/")[1]?.split(".")[0];
+            if (publicId) return cloudinary.uploader.destroy(publicId);
+        });
+        await Promise.all(deletePromises.filter(Boolean));
+    }
+
+    await Product.findByIdAndDelete(id);
+    res.status(200).json({ message: "Product deleted successfully" });
+};
+```
+
+<Tip>
+  The product deletion process ensures no orphaned images remain in Cloudinary storage, keeping your storage clean and costs optimized.
+</Tip>

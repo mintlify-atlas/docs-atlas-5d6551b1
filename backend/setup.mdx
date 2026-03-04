@@ -1,0 +1,200 @@
+---
+title: 'Backend Setup'
+description: 'Set up and configure the Don Palito Jr backend server'
+---
+
+## Prerequisites
+
+Before setting up the backend, ensure you have the following installed:
+
+<Steps>
+  <Step title="Node.js">
+    Install Node.js (version 18 or higher recommended). The backend uses ES modules and modern JavaScript features.
+  </Step>
+  
+  <Step title="MongoDB">
+    You'll need a MongoDB database. You can use:
+    - MongoDB Atlas (cloud)
+    - Local MongoDB installation
+  </Step>
+  
+  <Step title="Package Manager">
+    npm comes with Node.js. This project uses npm for dependency management.
+  </Step>
+</Steps>
+
+## Installation
+
+### Clone and Install Dependencies
+
+```bash
+cd backend
+npm install
+```
+
+This will install all required dependencies including:
+- **Express** - Web framework
+- **Mongoose** - MongoDB object modeling
+- **@clerk/express** - Authentication
+- **Cloudinary** - Image upload management
+- **Stripe** - Payment processing
+- **Inngest** - Event-driven functions
+- **CORS** - Cross-origin resource sharing
+
+<Note>
+  The backend uses ES modules (`"type": "module"` in package.json), so all imports use the `import` syntax instead of `require`.
+</Note>
+
+## Project Structure
+
+The backend follows a modular architecture:
+
+```
+src/
+├── config/          # Configuration files
+│   ├── db.js        # MongoDB connection
+│   ├── env.js       # Environment variables
+│   ├── cloudinary.js # Cloudinary setup
+│   └── inngest.js   # Inngest functions
+├── controllers/     # Request handlers
+│   ├── admin.controller.js
+│   ├── cart.controller.js
+│   ├── coupon.controller.js
+│   ├── order.controller.js
+│   ├── payment.controller.js
+│   ├── product.controller.js
+│   ├── review.controller.js
+│   └── user.controller.js
+├── middleware/      # Custom middleware
+│   ├── auth.middleware.js
+│   └── multer.middleware.js
+├── models/          # Mongoose schemas
+│   ├── cart.model.js
+│   ├── coupon.model.js
+│   ├── order.model.js
+│   ├── product.model.js
+│   ├── review.model.js
+│   └── user.model.js
+├── routes/          # API routes
+│   ├── admin.routes.js
+│   ├── cart.routes.js
+│   ├── coupon.routes.js
+│   ├── order.routes.js
+│   ├── payment.routes.js
+│   ├── product.routes.js
+│   ├── review.routes.js
+│   └── user.routes.js
+├── seeds/           # Database seeding
+│   └── index.js
+├── services/        # Business logic
+└── server.js        # Application entry point
+```
+
+## Development Server
+
+### Start the Server
+
+```bash
+npm run dev
+```
+
+This uses nodemon to watch for file changes in the `src` directory and automatically restart the server.
+
+<CodeGroup>
+```bash Development with Inngest
+npm run dev:all
+```
+
+```bash Inngest Only
+npm run inngest
+```
+</CodeGroup>
+
+<Note>
+  The `dev:all` command runs both the main server and Inngest dev server concurrently using the `concurrently` package.
+</Note>
+
+### Server Output
+
+When the server starts successfully, you'll see:
+
+```
+✅ Connected to MongoDB: cluster0.xxxxx.mongodb.net
+🚀 Server is up and running!
+💻 Local:        http://localhost:3000
+📱 Network:      http://192.168.40.137:3000
+🌍 Environment:  development
+```
+
+## Available Scripts
+
+From `package.json`:
+
+| Script | Command | Description |
+|--------|---------|-------------|
+| `npm run dev` | `nodemon src/server.js` | Start development server with auto-reload |
+| `npm run inngest` | `npx inngest-cli@latest dev -u http://localhost:3000/api/inngest` | Start Inngest dev server |
+| `npm run dev:all` | `concurrently "npm run dev" "npm run inngest"` | Run both servers simultaneously |
+| `npm run seed:products` | `node src/seeds/index.js` | Seed the database with products |
+
+## Seeding the Database
+
+To populate your database with initial product data:
+
+```bash
+npm run seed:products
+```
+
+This will:
+1. Connect to MongoDB
+2. Clear existing products
+3. Insert 15 products across categories:
+   - Palitos Premium
+   - Palitos Cocteleros
+   - Dulces
+   - Especiales
+   - Nuevos
+
+<Warning>
+  The seed command deletes all existing products before inserting new ones. Use with caution in production.
+</Warning>
+
+## API Endpoints
+
+Once running, the API is available at `http://localhost:3000`
+
+### Core Endpoints
+
+- `GET /` - API health check
+- `GET /api/health` - Health status endpoint
+- `POST /api/webhooks/clerk` - Clerk authentication webhooks
+- `/api/inngest` - Inngest event endpoint
+
+### Resource Endpoints
+
+- `/api/admin` - Admin operations
+- `/api/users` - User management
+- `/api/products` - Product catalog
+- `/api/cart` - Shopping cart
+- `/api/orders` - Order processing
+- `/api/payment` - Stripe payments
+- `/api/coupons` - Discount coupons
+- `/api/reviews` - Product reviews
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="gear" href="/backend/configuration">
+    Set up environment variables and third-party services
+  </Card>
+  <Card title="Database" icon="database" href="/backend/database">
+    Learn about MongoDB models and schemas
+  </Card>
+  <Card title="Authentication" icon="shield" href="/backend/authentication">
+    Configure Clerk authentication and protected routes
+  </Card>
+</CardGroup>
+
+<Tip>
+  For mobile app development, the server listens on `0.0.0.0` to be accessible from Android emulators and physical devices on your network.
+</Tip>
