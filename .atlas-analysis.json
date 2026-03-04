@@ -1,0 +1,116 @@
+{
+  "projectType": "saas",
+  "projectName": "Don Palito Jr",
+  "projectDescription": "Full-stack e-commerce platform with web, mobile, and admin interfaces for selling products with integrated payments and order management.",
+  "theme": "almond",
+  "primaryColor": "#848c8e",
+  "lightColor": "#11161e",
+  "darkColor": "#cfd0d2",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "architecture"
+            ]
+          },
+          {
+            "group": "Backend",
+            "pages": [
+              "backend/setup",
+              "backend/configuration",
+              "backend/database",
+              "backend/authentication"
+            ]
+          },
+          {
+            "group": "Frontend",
+            "pages": [
+              "frontend/web-app",
+              "frontend/admin-panel",
+              "frontend/mobile-app"
+            ]
+          },
+          {
+            "group": "Features",
+            "pages": [
+              "features/products",
+              "features/orders",
+              "features/payments",
+              "features/cart",
+              "features/coupons",
+              "features/reviews"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/environment-variables",
+              "deployment/production"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Admin Endpoints",
+            "pages": [
+              "api/admin/products",
+              "api/admin/orders",
+              "api/admin/users",
+              "api/admin/coupons"
+            ]
+          },
+          {
+            "group": "Customer Endpoints",
+            "pages": [
+              "api/products",
+              "api/cart",
+              "api/orders",
+              "api/payment",
+              "api/reviews"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Multi-platform support (Web, Mobile, Admin)",
+    "Stripe payment integration",
+    "Clerk authentication",
+    "Product catalog with images and reviews",
+    "Shopping cart and order management",
+    "Coupon system",
+    "Admin dashboard for inventory and orders",
+    "Email notifications with invoices",
+    "Cloudinary image storage",
+    "MongoDB database"
+  ],
+  "publicApiSurface": [
+    "GET /api/products - Get all products",
+    "GET /api/products/:id - Get product by ID",
+    "POST /api/cart/add - Add item to cart",
+    "GET /api/cart - Get user cart",
+    "POST /api/orders - Create order",
+    "GET /api/orders - Get user orders",
+    "POST /api/payment/create-checkout-session - Create payment session",
+    "POST /api/payment/webhook - Stripe webhook",
+    "POST /api/reviews - Create product review",
+    "GET /api/coupons/validate - Validate coupon code",
+    "POST /api/admin/products - Create product (admin)",
+    "PUT /api/admin/products/:id - Update product (admin)",
+    "DELETE /api/admin/products/:id - Delete product (admin)",
+    "GET /api/admin/orders - Get all orders (admin)",
+    "PATCH /api/admin/orders/:id/status - Update order status (admin)",
+    "GET /api/admin/users - Get all users (admin)",
+    "POST /api/admin/coupons - Create coupon (admin)"
+  ]
+}
