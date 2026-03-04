@@ -1,0 +1,243 @@
+---
+title: 'Coupons'
+description: 'Coupon validation and active coupon listing endpoints'
+---
+
+## Get Active Coupons
+
+<api method="GET" endpoint="/api/coupons/active" />
+
+Retrieve all currently active coupons. This is a public endpoint used for displaying available promotions.
+
+### Authentication
+
+Not required. This is a public endpoint.
+
+### Response
+
+<ResponseField name="coupons" type="array" required>
+  Array of active coupon objects
+</ResponseField>
+
+<ResponseField name="coupons[]._id" type="string">
+  Coupon identifier
+</ResponseField>
+
+<ResponseField name="coupons[].code" type="string">
+  Coupon code to use at checkout
+</ResponseField>
+
+<ResponseField name="coupons[].discountType" type="string">
+  Type of discount: "percentage" or "fixed"
+</ResponseField>
+
+<ResponseField name="coupons[].discountValue" type="number">
+  Discount value (1-100 for percentage, Colombian pesos for fixed)
+</ResponseField>
+
+<ResponseField name="coupons[].expiresAt" type="string">
+  ISO 8601 expiration date (null if no expiration)
+</ResponseField>
+
+<ResponseField name="coupons[].isActive" type="boolean">
+  Always true for this endpoint
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X GET https://api.donpalitojr.com/api/coupons/active
+```
+
+### Example Response
+
+```json
+{
+  "coupons": [
+    {
+      "_id": "65f8a1b2c3d4e5f6g7h8i9j0",
+      "code": "WELCOME10",
+      "discountType": "percentage",
+      "discountValue": 10,
+      "expiresAt": "2024-12-31T23:59:59.000Z",
+      "isActive": true
+    },
+    {
+      "_id": "65f8a1b2c3d4e5f6g7h8i9j1",
+      "code": "FREESHIP",
+      "discountType": "fixed",
+      "discountValue": 5000,
+      "expiresAt": null,
+      "isActive": true
+    }
+  ]
+}
+```
+
+<Note>
+  Active coupons are those that are:
+  - Marked as `isActive: true`
+  - Not expired (or have no expiration date)
+  
+  This endpoint is commonly used for homepage marquees or promotional banners.
+</Note>
+
+---
+
+## Validate Coupon
+
+<api method="POST" endpoint="/api/coupons/validate" />
+
+Validate a coupon code and calculate the discount for a given cart total.
+
+### Authentication
+
+Required. User must be authenticated via Clerk.
+
+### Request Body
+
+<ParamField body="code" type="string" required>
+  The coupon code to validate (case-insensitive)
+</ParamField>
+
+<ParamField body="cartTotal" type="number" required>
+  The current cart total in Colombian pesos (COP)
+</ParamField>
+
+### Response
+
+<ResponseField name="isValid" type="boolean" required>
+  Whether the coupon is valid for use
+</ResponseField>
+
+<ResponseField name="discountAmount" type="number">
+  The discount amount in COP (only present if valid)
+</ResponseField>
+
+<ResponseField name="finalTotal" type="number">
+  The final total after applying the discount (only present if valid)
+</ResponseField>
+
+<ResponseField name="coupon" type="object">
+  The coupon object (only present if valid)
+</ResponseField>
+
+<ResponseField name="coupon._id" type="string">
+  Coupon identifier
+</ResponseField>
+
+<ResponseField name="coupon.code" type="string">
+  Coupon code
+</ResponseField>
+
+<ResponseField name="coupon.discountType" type="string">
+  "percentage" or "fixed"
+</ResponseField>
+
+<ResponseField name="coupon.discountValue" type="number">
+  Discount value
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Error message (only present if invalid)
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X POST https://api.donpalitojr.com/api/coupons/validate \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "WELCOME10",
+    "cartTotal": 100000
+  }'
+```
+
+### Example Response (Valid)
+
+```json
+{
+  "isValid": true,
+  "discountAmount": 10000,
+  "finalTotal": 90000,
+  "coupon": {
+    "_id": "65f8a1b2c3d4e5f6g7h8i9j0",
+    "code": "WELCOME10",
+    "discountType": "percentage",
+    "discountValue": 10
+  }
+}
+```
+
+### Example Response (Invalid)
+
+```json
+{
+  "isValid": false,
+  "message": "Coupon code not found or expired"
+}
+```
+
+### Validation Rules
+
+The coupon validation checks for:
+
+1. **Coupon exists** - The code must match an existing coupon
+2. **Active status** - Coupon must be marked as `isActive: true`
+3. **Not expired** - Current date must be before `expiresAt` (if set)
+4. **One-time use** - User must not have already used this coupon (checked via `usedBy` array)
+
+<Accordion title="Common Validation Errors">
+  - `"Coupon code not found or expired"` - Code doesn't exist, is inactive, or has expired
+  - `"You have already used this coupon"` - User has already redeemed this coupon previously
+  - `"Coupon is not active"` - Coupon is disabled by admin
+</Accordion>
+
+---
+
+## Applying Coupons
+
+Coupons can be applied during the checkout process when creating a payment intent:
+
+```bash
+curl -X POST https://api.donpalitojr.com/api/payment/create-intent \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cartItems": [...],
+    "shippingAddress": {...},
+    "couponCode": "WELCOME10"
+  }'
+```
+
+The payment intent endpoint will:
+1. Validate the coupon
+2. Calculate the discount
+3. Apply it to the total
+4. Mark the coupon as used by adding the user to the `usedBy` array
+
+See the [Payment API documentation](/api/payment) for more details.
+
+---
+
+## Error Responses
+
+<ResponseField name="error" type="string">
+  Error message describing what went wrong
+</ResponseField>
+
+### Common Error Codes
+
+- `400` - Bad Request (missing code or cartTotal)
+- `401` - Unauthorized (authentication required for validate endpoint)
+- `404` - Not Found (coupon doesn't exist)
+- `500` - Internal Server Error
+
+#### Example Error Response
+
+```json
+{
+  "error": "Code and cartTotal are required"
+}
+```

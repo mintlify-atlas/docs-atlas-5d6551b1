@@ -1,6 +1,6 @@
 ---
-title: 'Order Management'
-description: 'Admin endpoints for managing orders and order status'
+title: 'Order Management & Dashboard'
+description: 'Admin endpoints for managing orders, order status, and dashboard statistics'
 ---
 
 ## Get All Orders
@@ -271,3 +271,59 @@ curl -X PATCH https://api.example.com/api/admin/orders/507f1f77bcf86cd799439011/
 }
 ```
 </ResponseExample>
+
+---
+
+## Get Dashboard Statistics
+
+<api method="GET" endpoint="/api/admin/stats" />
+
+Retrieve aggregated statistics for the admin dashboard including total revenue, orders, customers, and products.
+
+### Authentication
+
+Requires Clerk authentication with admin role.
+
+### Response
+
+<ResponseField name="totalRevenue" type="number" required>
+  Total revenue from all orders (sum of all order `totalPrice` fields)
+</ResponseField>
+
+<ResponseField name="totalOrders" type="number" required>
+  Total number of orders in the system
+</ResponseField>
+
+<ResponseField name="totalCustomers" type="number" required>
+  Total number of registered users
+</ResponseField>
+
+<ResponseField name="totalProducts" type="number" required>
+  Total number of products in the catalog
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X GET https://api.donpalitojr.com/api/admin/stats \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+### Example Response
+
+```json
+{
+  "totalRevenue": 15750000,
+  "totalOrders": 342,
+  "totalCustomers": 156,
+  "totalProducts": 48
+}
+```
+
+<Note>
+  The `totalRevenue` is calculated by aggregating the `totalPrice` field from all orders, regardless of order status. This includes pending, paid, and delivered orders.
+</Note>
+
+<Tip>
+  Use this endpoint to populate dashboard cards and metrics displays in the admin panel.
+</Tip>

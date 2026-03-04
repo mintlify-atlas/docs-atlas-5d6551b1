@@ -1,0 +1,529 @@
+---
+title: 'User Profile & Preferences'
+description: 'User profile, address, wishlist, and preference management endpoints'
+---
+
+<Note>
+  All user endpoints require authentication. Users can only access and modify their own data.
+</Note>
+
+## Address Management
+
+### Get Addresses
+
+<api method="GET" endpoint="/api/users/addresses" />
+
+Retrieve all saved addresses for the authenticated user.
+
+#### Authentication
+
+Required. User must be authenticated via Clerk.
+
+#### Response
+
+<ResponseField name="addresses" type="array" required>
+  Array of saved address objects
+</ResponseField>
+
+<ResponseField name="addresses[]._id" type="string">
+  Address identifier
+</ResponseField>
+
+<ResponseField name="addresses[].label" type="string">
+  Address label (e.g., "Home", "Work")
+</ResponseField>
+
+<ResponseField name="addresses[].fullName" type="string">
+  Recipient's full name
+</ResponseField>
+
+<ResponseField name="addresses[].streetAddress" type="string">
+  Street address
+</ResponseField>
+
+<ResponseField name="addresses[].city" type="string">
+  City
+</ResponseField>
+
+<ResponseField name="addresses[].phoneNumber" type="string">
+  Contact phone number
+</ResponseField>
+
+<ResponseField name="addresses[].isDefault" type="boolean">
+  Whether this is the default address
+</ResponseField>
+
+#### Example Response
+
+```json
+{
+  "addresses": [
+    {
+      "_id": "65f8a1b2c3d4e5f6g7h8i9j0",
+      "label": "Home",
+      "fullName": "Juan Pérez",
+      "streetAddress": "Calle 123 #45-67",
+      "city": "Bogotá",
+      "phoneNumber": "+57 300 123 4567",
+      "isDefault": true
+    }
+  ]
+}
+```
+
+---
+
+### Add Address
+
+<api method="POST" endpoint="/api/users/addresses" />
+
+Add a new address to the user's address book.
+
+#### Authentication
+
+Required. User must be authenticated via Clerk.
+
+#### Request Body
+
+<ParamField body="label" type="string" required>
+  Address label (e.g., "Home", "Work", "Office")
+</ParamField>
+
+<ParamField body="fullName" type="string" required>
+  Recipient's full name
+</ParamField>
+
+<ParamField body="streetAddress" type="string" required>
+  Street address
+</ParamField>
+
+<ParamField body="city" type="string" required>
+  City
+</ParamField>
+
+<ParamField body="phoneNumber" type="string" required>
+  Contact phone number
+</ParamField>
+
+<ParamField body="isDefault" type="boolean">
+  Set as default address (will unset other defaults)
+</ParamField>
+
+#### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="addresses" type="array">
+  Updated array of all addresses
+</ResponseField>
+
+#### Example Request
+
+```bash
+curl -X POST https://api.donpalitojr.com/api/users/addresses \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "label": "Home",
+    "fullName": "Juan Pérez",
+    "streetAddress": "Calle 123 #45-67",
+    "city": "Bogotá",
+    "phoneNumber": "+57 300 123 4567",
+    "isDefault": true
+  }'
+```
+
+---
+
+### Update Address
+
+<api method="PUT" endpoint="/api/users/addresses/:addressId" />
+
+Update an existing address. All fields are optional.
+
+#### Authentication
+
+Required. User must be authenticated via Clerk.
+
+#### Path Parameters
+
+<ParamField path="addressId" type="string" required>
+  The ID of the address to update
+</ParamField>
+
+#### Request Body
+
+<ParamField body="label" type="string">
+  Address label
+</ParamField>
+
+<ParamField body="fullName" type="string">
+  Recipient's full name
+</ParamField>
+
+<ParamField body="streetAddress" type="string">
+  Street address
+</ParamField>
+
+<ParamField body="city" type="string">
+  City
+</ParamField>
+
+<ParamField body="phoneNumber" type="string">
+  Contact phone number
+</ParamField>
+
+<ParamField body="isDefault" type="boolean">
+  Set as default address
+</ParamField>
+
+#### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="addresses" type="array">
+  Updated array of all addresses
+</ResponseField>
+
+---
+
+### Delete Address
+
+<api method="DELETE" endpoint="/api/users/addresses/:addressId" />
+
+Delete an address from the user's address book.
+
+#### Authentication
+
+Required. User must be authenticated via Clerk.
+
+#### Path Parameters
+
+<ParamField path="addressId" type="string" required>
+  The ID of the address to delete
+</ParamField>
+
+#### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="addresses" type="array">
+  Updated array of remaining addresses
+</ResponseField>
+
+---
+
+## Wishlist Management
+
+### Get Wishlist
+
+<api method="GET" endpoint="/api/users/wishlist" />
+
+Retrieve the user's wishlist with populated product details.
+
+#### Authentication
+
+Required. User must be authenticated via Clerk.
+
+#### Response
+
+<ResponseField name="wishlist" type="array" required>
+  Array of product objects in the wishlist
+</ResponseField>
+
+#### Example Response
+
+```json
+{
+  "wishlist": [
+    {
+      "_id": "65f8a1b2c3d4e5f6g7h8i9j1",
+      "name": "Product Name",
+      "description": "Product description",
+      "price": 25000,
+      "images": ["https://res.cloudinary.com/..."],
+      "category": "electronics",
+      "stock": 50,
+      "averageRating": 4.5,
+      "totalReviews": 12
+    }
+  ]
+}
+```
+
+---
+
+### Add to Wishlist
+
+<api method="POST" endpoint="/api/users/wishlist" />
+
+Add a product to the user's wishlist.
+
+#### Authentication
+
+Required. User must be authenticated via Clerk.
+
+#### Request Body
+
+<ParamField body="productId" type="string" required>
+  The ID of the product to add
+</ParamField>
+
+#### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="wishlist" type="array">
+  Updated wishlist with populated products
+</ResponseField>
+
+#### Example Request
+
+```bash
+curl -X POST https://api.donpalitojr.com/api/users/wishlist \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "productId": "65f8a1b2c3d4e5f6g7h8i9j1"
+  }'
+```
+
+---
+
+### Remove from Wishlist
+
+<api method="DELETE" endpoint="/api/users/wishlist/:productId" />
+
+Remove a product from the user's wishlist.
+
+#### Authentication
+
+Required. User must be authenticated via Clerk.
+
+#### Path Parameters
+
+<ParamField path="productId" type="string" required>
+  The ID of the product to remove
+</ParamField>
+
+#### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="wishlist" type="array">
+  Updated wishlist
+</ResponseField>
+
+---
+
+## Profile Management
+
+### Get Profile
+
+<api method="GET" endpoint="/api/users/profile" />
+
+Get the authenticated user's profile information.
+
+#### Authentication
+
+Required. User must be authenticated via Clerk.
+
+#### Response
+
+<ResponseField name="user" type="object" required>
+  User profile object
+</ResponseField>
+
+<ResponseField name="user._id" type="string">
+  User ID
+</ResponseField>
+
+<ResponseField name="user.clerkId" type="string">
+  Clerk user ID
+</ResponseField>
+
+<ResponseField name="user.firstName" type="string">
+  First name
+</ResponseField>
+
+<ResponseField name="user.lastName" type="string">
+  Last name
+</ResponseField>
+
+<ResponseField name="user.email" type="string">
+  Email address
+</ResponseField>
+
+<ResponseField name="user.phoneNumber" type="string">
+  Phone number
+</ResponseField>
+
+<ResponseField name="user.documentType" type="string">
+  Document type (e.g., "CC", "CE", "NIT")
+</ResponseField>
+
+<ResponseField name="user.documentNumber" type="string">
+  Document number
+</ResponseField>
+
+<ResponseField name="user.addresses" type="array">
+  Saved addresses
+</ResponseField>
+
+<ResponseField name="user.wishlist" type="array">
+  Wishlist product IDs
+</ResponseField>
+
+<ResponseField name="user.notificationPreferences" type="object">
+  Notification preferences
+</ResponseField>
+
+---
+
+### Update Profile
+
+<api method="PUT" endpoint="/api/users/profile" />
+
+Update user profile information. All fields are optional.
+
+#### Authentication
+
+Required. User must be authenticated via Clerk.
+
+#### Request Body
+
+<ParamField body="firstName" type="string">
+  First name
+</ParamField>
+
+<ParamField body="lastName" type="string">
+  Last name
+</ParamField>
+
+<ParamField body="phoneNumber" type="string">
+  Phone number
+</ParamField>
+
+<ParamField body="documentType" type="string">
+  Document type (CC, CE, NIT, Passport)
+</ParamField>
+
+<ParamField body="documentNumber" type="string">
+  Document number
+</ParamField>
+
+#### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="user" type="object">
+  Updated user profile
+</ResponseField>
+
+---
+
+### Update Notification Preferences
+
+<api method="PUT" endpoint="/api/users/notification-preferences" />
+
+Update user notification preferences for order updates, promotions, and newsletters.
+
+#### Authentication
+
+Required. User must be authenticated via Clerk.
+
+#### Request Body
+
+<ParamField body="orderUpdates" type="boolean">
+  Receive order status update notifications
+</ParamField>
+
+<ParamField body="promotions" type="boolean">
+  Receive promotional offers
+</ParamField>
+
+<ParamField body="newsletter" type="boolean">
+  Subscribe to newsletter
+</ParamField>
+
+#### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="notificationPreferences" type="object">
+  Updated notification preferences
+</ResponseField>
+
+#### Example Request
+
+```bash
+curl -X PUT https://api.donpalitojr.com/api/users/notification-preferences \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "orderUpdates": true,
+    "promotions": false,
+    "newsletter": true
+  }'
+```
+
+---
+
+### Deactivate Account
+
+<api method="PATCH" endpoint="/api/users/deactivate" />
+
+Deactivate the user's account. This action marks the account as inactive but preserves data.
+
+#### Authentication
+
+Required. User must be authenticated via Clerk.
+
+#### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<Warning>
+  Account deactivation will log the user out and prevent future logins until reactivation. Contact support to reactivate your account.
+</Warning>
+
+---
+
+## Error Responses
+
+All endpoints may return the following error responses:
+
+<ResponseField name="error" type="string">
+  Error message describing what went wrong
+</ResponseField>
+
+### Common Error Codes
+
+- `400` - Bad Request (missing or invalid parameters)
+- `401` - Unauthorized (authentication required)
+- `404` - Not Found (address or resource not found)
+- `500` - Internal Server Error
+
+#### Example Error Response
+
+```json
+{
+  "error": "Missing required address fields"
+}
+```

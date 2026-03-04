@@ -92,7 +92,9 @@
               "api/cart",
               "api/orders",
               "api/payment",
-              "api/reviews"
+              "api/coupons",
+              "api/reviews",
+              "api/users"
             ]
           }
         ]
